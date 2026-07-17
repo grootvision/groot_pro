@@ -171,6 +171,15 @@ array(
 			'status_option' => 'wpmc_options',
 			'status_key'    => 'enabled',
 		),
+		array(
+	'title'         => 'سیستم تیکت پشتیبانی',
+	'desc'          => 'ثبت، پیگیری و مدیریت تیکت‌های کاربران به همراه پاسخ‌دهی از پیشخوان و ارسال اعلان ایمیلی.',
+	'icon'          => '🎫',
+	'page'          => GV_ST_PAGE_SLUG,
+	'color'         => '#2563eb',
+	'status_option' => GV_ST_OPT,
+	'status_key'    => 'enabled',
+),
 
 	);
 }
