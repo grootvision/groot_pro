@@ -2,7 +2,7 @@
 if ( ! defined( 'ABSPATH' ) ) { exit; }
 /**
  * ==========================================================
- *  Groot Vision — Hub / Dashboard (نسخه بهینه‌شده)
+ *  Groot Vision — Hub / Dashboard (نسخه بازطراحی‌شده)
  *  این فایل باید همیشه با اولویت زودتر از سایر اسنیپت‌ها
  *  (نوار اعلان / کادر تبلیغاتی / پروگرس بار / اعلان خرید / امنیت و سرعت /
  *   استایل جدول‌ها / کلمات کلیدی سئو)
@@ -40,13 +40,51 @@ function gv_hub_register_menu() {
 }
 
 /* ==========================================================
-   ۲) اطلاعات کارت هر افزونه
+   ۲) دسته‌بندی‌ها
+   ------------------------------------------------------------
+   هر افزونه با یک کلید 'category' به یکی از این دسته‌ها
+   وصل می‌شود. برای افزودن دسته‌ی جدید، فقط یک آیتم دیگر
+   به این آرایه اضافه کنید.
+   ========================================================== */
+function gv_hub_get_categories() {
+	return array(
+		'marketing' => array(
+			'label' => 'بازاریابی و تبدیل مشتری',
+			'sub'   => 'ابزارهایی برای جلب توجه و افزایش نرخ خرید',
+			'icon'  => '🎯',
+		),
+		'design' => array(
+			'label' => 'طراحی و تجربه کاربری',
+			'sub'   => 'ظاهر، فونت و حس‌وحال بصری سایت',
+			'icon'  => '🎨',
+		),
+		'security' => array(
+			'label' => 'امنیت و عملکرد',
+			'sub'   => 'محافظت، سرعت و پایداری سایت',
+			'icon'  => '🛡️',
+		),
+		'seo' => array(
+			'label' => 'سئو و محتوا',
+			'sub'   => 'تولید و مدیریت محتوای هدفمند',
+			'icon'  => '🔍',
+		),
+		'manage' => array(
+			'label' => 'مدیریت، آمار و پشتیبانی',
+			'sub'   => 'کنترل، رصد و پشتیبانی از پشت‌صحنه',
+			'icon'  => '📊',
+		),
+	);
+}
+
+/* ==========================================================
+   ۳) اطلاعات کارت هر افزونه
    ------------------------------------------------------------
    'status_option' : نام آپشنی که وضعیت فعال/غیرفعال بودن
                      افزونه را نگه می‌دارد (برای نمایش روی کارت)
    'status_key'    : اگر تنظیمات داخل یک آرایه ذخیره شده،
                      کلیدی که فیلد enabled را نشان می‌دهد
    'page'          : اسلاگ صفحه‌ی زیرمنو (همیشه با admin.php?page=... باز می‌شود)
+   'category'      : کلید دسته‌بندی (از gv_hub_get_categories)
    برای افزودن افزونه جدید، فقط یک آیتم دیگر به این آرایه اضافه کنید.
    ========================================================== */
 function gv_hub_get_items() {
@@ -57,6 +95,7 @@ function gv_hub_get_items() {
 			'icon'          => '📢',
 			'page'          => 'gv-topbar-settings',
 			'color'         => '#0e4037',
+			'category'      => 'marketing',
 			'status_option' => 'gv_topbar_settings',
 			'status_key'    => 'enabled',
 		),
@@ -66,8 +105,19 @@ function gv_hub_get_items() {
 			'icon'          => '📣',
 			'page'          => 'clx-discount-bar',
 			'color'         => '#0EA5A4',
+			'category'      => 'marketing',
 			'status_option' => 'clx_bar_settings',
 			'status_key'    => 'enabled',
+		),
+		array(
+			'title'         => 'اعلان خرید',
+			'desc'          => 'نمایش اعلان خریدهای اخیر روی سایت، افزودن خرید جدید، ایمپورت/اکسپورت CSV و مشاهده آمار کلیک‌ها.',
+			'icon'          => '🛒',
+			'page'          => 'vitrin_purchase_settings',
+			'color'         => '#9f1239',
+			'category'      => 'marketing',
+			'status_option' => 'vp_enabled',
+			'status_key'    => null,
 		),
 		array(
 			'title'         => 'پروگرس بار اسکرول',
@@ -75,29 +125,9 @@ function gv_hub_get_items() {
 			'icon'          => '📊',
 			'page'          => 'clx-progress-bar',
 			'color'         => '#7c3aed',
+			'category'      => 'design',
 			'status_option' => 'clx_progress_settings',
 			'status_key'    => 'enabled',
-		),
-		array(
-			// ⚠️ اصلاح شد: قبلاً اسمش «همه اعلان‌ها» بود و اشتباهاً به صفحه‌ی
-			// نوار اعلان (gv-topbar-settings) لینک می‌شد. الان درست به صفحه‌ی
-			// تنظیمات خودِ اعلان خرید (notification.php) وصل است.
-			'title'         => 'اعلان خرید',
-			'desc'          => 'نمایش اعلان خریدهای اخیر روی سایت، افزودن خرید جدید، ایمپورت/اکسپورت CSV و مشاهده آمار کلیک‌ها.',
-			'icon'          => '🛒',
-			'page'          => 'vitrin_purchase_settings',
-			'color'         => '#9f1239',
-			'status_option' => 'vp_enabled',
-			'status_key'    => null,
-		),
-		array(
-			'title'         => 'امنیت و سرعت',
-			'desc'          => 'کپچای ریاضی، بلاک درخواست‌های سرور-به-سرور غیرضروری، لیست سفید دائمی درگاه پرداخت و تشخیص خودکار دامنه‌های کند.',
-			'icon'          => '🛡️',
-			'page'          => 'gv-security-speed',
-			'color'         => '#2563eb',
-			'status_option' => 'gv_security_settings',
-			'status_key'    => 'active',
 		),
 		array(
 			'title'         => 'استایل جدول‌ها و تسویه‌حساب',
@@ -105,34 +135,8 @@ function gv_hub_get_items() {
 			'icon'          => '🎨',
 			'page'          => 'gv-table-style',
 			'color'         => '#7c3aed',
+			'category'      => 'design',
 			'status_option' => 'gv_table_style_settings',
-			'status_key'    => 'enabled',
-		),
-		array(
-			'title'         => 'دستیار هوش‌مصنوعی سئو',
-			'desc'          => 'کارمند کلمه کلیدی و توضیحات را وارد می‌کند، بخش سایت (نوشته/برگه/محصول) را انتخاب می‌کند و محتوای سئوشده به‌صورت خودکار تولید و آپلود می‌شود.',
-			'icon'          => '🤖',
-			'page'          => 'gv-ai-seo-writer',
-			'color'         => '#16a34a',
-			'status_option' => null,
-			'status_key'    => null,
-		),
-		array(
-			'title'         => 'کلمات کلیدی سئو',
-			'desc'          => 'جمع‌آوری تمام کلمات کلیدی فوکوس سایت از Yoast / RankMath / AIOSEO / SEOPress در یک‌جا، به‌همراه خروجی CSV.',
-			'icon'          => '🔑',
-			'page'          => 'gv-seo-keywords',
-			'color'         => '#b45309',
-			'status_option' => null,
-			'status_key'    => null,
-		),
-		array(
-			'title'         => 'به‌روزرسانی خودکار گیت‌هاب',
-			'desc'          => 'اتصال افزونه به مخزن گیت‌هاب پروژه؛ با هر Release جدید، دکمه به‌روزرسانی و خلاصه تغییرات به‌صورت خودکار در پیشخوان نمایش داده می‌شود.',
-			'icon'          => '🔄',
-			'page'          => 'gv-github-updater',
-			'color'         => '#0e4037',
-			'status_option' => 'gv_github_updater_settings',
 			'status_key'    => 'enabled',
 		),
 		array(
@@ -141,6 +145,7 @@ function gv_hub_get_items() {
 			'icon'          => '🔐',
 			'page'          => 'gv-login-style',
 			'color'         => '#6d28d9',
+			'category'      => 'design',
 			'status_option' => 'gv_login_style_settings',
 			'status_key'    => 'enabled',
 		),
@@ -150,6 +155,7 @@ function gv_hub_get_items() {
 			'icon'          => '🔤',
 			'page'          => 'gv-font-manager',
 			'color'         => '#db2777',
+			'category'      => 'design',
 			'status_option' => 'gv_font_manager_settings',
 			'status_key'    => 'enabled',
 		),
@@ -159,8 +165,59 @@ function gv_hub_get_items() {
 			'icon'          => '📅',
 			'page'          => 'gv-jalali-date',
 			'color'         => '#0891b2',
+			'category'      => 'design',
 			'status_option' => 'gv_jalali_date_settings',
 			'status_key'    => 'enabled',
+		),
+		array(
+			'title'         => 'امنیت و سرعت',
+			'desc'          => 'کپچای ریاضی، بلاک درخواست‌های سرور-به-سرور غیرضروری، لیست سفید دائمی درگاه پرداخت و تشخیص خودکار دامنه‌های کند.',
+			'icon'          => '🛡️',
+			'page'          => 'gv-security-speed',
+			'color'         => '#2563eb',
+			'category'      => 'security',
+			'status_option' => 'gv_security_settings',
+			'status_key'    => 'active',
+		),
+		array(
+			'title'         => 'بهینه‌ساز خودکار تصاویر',
+			'desc'          => 'فشرده‌سازی خودکار تصاویر سنگین هنگام آپلود (بدون افت کیفیت یا ابعاد) و پاک‌سازی خودکار نسخه‌ی اصلیِ سنگین بعد از مدت مشخص برای صرفه‌جویی در فضای هاست.',
+			'icon'          => '🖼️',
+			'page'          => GV_IMGOPT_PAGE_SLUG,
+			'color'         => '#059669',
+			'category'      => 'security',
+			'status_option' => GV_IMGOPT_OPT,
+			'status_key'    => 'enabled',
+		),
+		array(
+			'title'         => 'حالت تعمیر',
+			'desc'          => 'بخش حالت تعمیر برای بروزرسانی وبسایت، هنگام آپدیت های ضروری و احتمال مشکل ساز شدن بازدید مشتری.',
+			'icon'          => '🚧',
+			'page'          => 'wpmc-maintenance',
+			'color'         => '#2563eb',
+			'category'      => 'security',
+			'status_option' => 'wpmc_options',
+			'status_key'    => 'enabled',
+		),
+		array(
+			'title'         => 'دستیار هوش‌مصنوعی سئو',
+			'desc'          => 'کارمند کلمه کلیدی و توضیحات را وارد می‌کند، بخش سایت (نوشته/برگه/محصول) را انتخاب می‌کند و محتوای سئوشده به‌صورت خودکار تولید و آپلود می‌شود.',
+			'icon'          => '🤖',
+			'page'          => 'gv-ai-seo-writer',
+			'color'         => '#16a34a',
+			'category'      => 'seo',
+			'status_option' => null,
+			'status_key'    => null,
+		),
+		array(
+			'title'         => 'کلمات کلیدی سئو',
+			'desc'          => 'جمع‌آوری تمام کلمات کلیدی فوکوس سایت از Yoast / RankMath / AIOSEO / SEOPress در یک‌جا، به‌همراه خروجی CSV.',
+			'icon'          => '🔑',
+			'page'          => 'gv-seo-keywords',
+			'color'         => '#b45309',
+			'category'      => 'seo',
+			'status_option' => null,
+			'status_key'    => null,
 		),
 		array(
 			'title'         => 'آمار بازدید و رفتار کاربران',
@@ -168,37 +225,30 @@ function gv_hub_get_items() {
 			'icon'          => '📈',
 			'page'          => 'gv-visitor-analytics',
 			'color'         => '#2563eb',
+			'category'      => 'manage',
 			'status_option' => 'gv_visitor_analytics_settings',
 			'status_key'    => 'enabled',
 		),
-array(
-			'title'         => 'حالت تعمیر',
-			'desc'          => 'بخش حالت تعمیر برای بروزرسانی وبسایت، هنگام آپدیت های ضروری و احتمال مشکل ساز شدن بازدید مشتری.',
-			'icon'          => '📈',
-			'page'          => 'wpmc-maintenance',
+		array(
+			'title'         => 'سیستم تیکت پشتیبانی',
+			'desc'          => 'ثبت، پیگیری و مدیریت تیکت‌های کاربران به همراه پاسخ‌دهی از پیشخوان و ارسال اعلان ایمیلی.',
+			'icon'          => '🎫',
+			'page'          => GV_ST_PAGE_SLUG,
 			'color'         => '#2563eb',
-			'status_option' => 'wpmc_options',
+			'category'      => 'manage',
+			'status_option' => GV_ST_OPT,
 			'status_key'    => 'enabled',
 		),
 		array(
-	'title'         => 'سیستم تیکت پشتیبانی',
-	'desc'          => 'ثبت، پیگیری و مدیریت تیکت‌های کاربران به همراه پاسخ‌دهی از پیشخوان و ارسال اعلان ایمیلی.',
-	'icon'          => '🎫',
-	'page'          => GV_ST_PAGE_SLUG,
-	'color'         => '#2563eb',
-	'status_option' => GV_ST_OPT,
-	'status_key'    => 'enabled',
-),
-array(
-	'title'         => 'بهینه‌ساز خودکار تصاویر',
-	'desc'          => 'فشرده‌سازی خودکار تصاویر سنگین هنگام آپلود (بدون افت کیفیت یا ابعاد) و پاک‌سازی خودکار نسخه‌ی اصلیِ سنگین بعد از مدت مشخص برای صرفه‌جویی در فضای هاست.',
-	'icon'          => '🖼️',
-	'page'          => GV_IMGOPT_PAGE_SLUG,
-	'color'         => '#059669',
-	'status_option' => GV_IMGOPT_OPT,
-	'status_key'    => 'enabled',
-),
-
+			'title'         => 'به‌روزرسانی خودکار گیت‌هاب',
+			'desc'          => 'اتصال افزونه به مخزن گیت‌هاب پروژه؛ با هر Release جدید، دکمه به‌روزرسانی و خلاصه تغییرات به‌صورت خودکار در پیشخوان نمایش داده می‌شود.',
+			'icon'          => '🔄',
+			'page'          => 'gv-github-updater',
+			'color'         => '#0e4037',
+			'category'      => 'manage',
+			'status_option' => 'gv_github_updater_settings',
+			'status_key'    => 'enabled',
+		),
 	);
 }
 
@@ -228,60 +278,134 @@ function gv_hub_get_item_status( $item ) {
 }
 
 /* ==========================================================
-   ۳) رندر صفحه داشبورد
+   ۴) رندر صفحه داشبورد
    ========================================================== */
 function gv_hub_render_page() {
 	if ( ! current_user_can( 'manage_options' ) ) { return; }
-	$items = gv_hub_get_items();
+
+	$items      = gv_hub_get_items();
+	$categories = gv_hub_get_categories();
+
+	// گروه‌بندی آیتم‌ها بر اساس دسته
+	$grouped = array();
+	foreach ( $categories as $cat_key => $cat ) {
+		$grouped[ $cat_key ] = array();
+	}
+	foreach ( $items as $item ) {
+		$cat_key = isset( $item['category'] ) && isset( $categories[ $item['category'] ] ) ? $item['category'] : 'manage';
+		$grouped[ $cat_key ][] = $item;
+	}
 
 	$active_count = 0;
 	foreach ( $items as $item ) {
 		if ( true === gv_hub_get_item_status( $item ) ) { $active_count++; }
 	}
 	?>
-	<div class="wrap gv-hub-wrap" dir="rtl">
+	<div class="gv-hub-wrap" id="gv-hub-wrap" dir="rtl" data-theme="light">
 
 		<div class="gv-hub-header">
-			<div class="gv-hub-logo">
-				<span class="dashicons dashicons-star-filled"></span>
-				<div>
-					<h1>افزونه‌های گروت ویژن</h1>
-					<p>مدیریت یکپارچه‌ی تمام ابزارهای نصب‌شده روی سایت شما</p>
+			<div class="gv-hub-header-row">
+				<div class="gv-hub-logo">
+					<span class="gv-hub-logo-mark" aria-hidden="true">
+						<svg viewBox="0 0 48 48" width="30" height="30" fill="none">
+							<path d="M24 4C15 10 10 18 10 27c0 8 6 15 14 17 8-2 14-9 14-17 0-9-5-17-14-23Z" fill="currentColor" opacity=".18"/>
+							<path d="M24 44V22M24 22c0-6 4-10 10-12M24 22c0-5-3-9-8-11" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>
+						</svg>
+					</span>
+					<div>
+						<h1>افزونه‌های گروت ویژن</h1>
+						<p>مدیریت یکپارچه‌ی تمام ابزارهای نصب‌شده روی سایت شما</p>
+					</div>
+				</div>
+
+				<div class="gv-hub-header-actions">
+					<div class="gv-hub-header-stats">
+						<span class="gv-hub-badge gv-hub-badge-total"><?php echo count( $items ); ?> افزونه نصب‌شده</span>
+						<span class="gv-hub-badge gv-hub-badge-active"><?php echo esc_html( $active_count ); ?> فعال</span>
+					</div>
+					<button type="button" id="gv-theme-toggle" class="gv-theme-toggle" aria-label="تغییر پوسته تاریک/روشن" aria-pressed="false">
+						<span class="gv-theme-toggle-icon gv-icon-sun" aria-hidden="true">
+							<svg viewBox="0 0 24 24" width="16" height="16"><circle cx="12" cy="12" r="4.2" fill="currentColor"/><g stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M12 2.5v2.6M12 18.9v2.6M4.6 12H2M22 12h-2.6M6.3 6.3 4.5 4.5M19.5 19.5l-1.8-1.8M17.7 6.3l1.8-1.8M4.5 19.5l1.8-1.8"/></g></svg>
+						</span>
+						<span class="gv-theme-toggle-icon gv-icon-moon" aria-hidden="true">
+							<svg viewBox="0 0 24 24" width="16" height="16"><path d="M20 14.5A8.5 8.5 0 1 1 9.5 4a7 7 0 0 0 10.5 10.5Z" fill="currentColor"/></svg>
+						</span>
+						<span class="gv-theme-toggle-track"><span class="gv-theme-toggle-dot"></span></span>
+					</button>
 				</div>
 			</div>
-			<div class="gv-hub-header-stats">
-				<span class="gv-hub-badge gv-hub-badge-total"><?php echo count( $items ); ?> افزونه نصب‌شده</span>
-				<span class="gv-hub-badge gv-hub-badge-active"><?php echo esc_html( $active_count ); ?> فعال</span>
+
+			<div class="gv-hub-toolbar">
+				<div class="gv-hub-filters" id="gv-hub-filters" role="tablist" aria-label="فیلتر دسته‌بندی">
+					<button type="button" class="gv-hub-filter is-active" data-filter="all" role="tab" aria-selected="true">
+						<span>همه</span><b><?php echo count( $items ); ?></b>
+					</button>
+					<?php foreach ( $categories as $cat_key => $cat ) : ?>
+						<button type="button" class="gv-hub-filter" data-filter="<?php echo esc_attr( $cat_key ); ?>" role="tab" aria-selected="false">
+							<span><?php echo esc_html( $cat['icon'] . ' ' . $cat['label'] ); ?></span>
+							<b><?php echo count( $grouped[ $cat_key ] ); ?></b>
+						</button>
+					<?php endforeach; ?>
+				</div>
+				<div class="gv-hub-search">
+					<svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true"><circle cx="11" cy="11" r="7" stroke="currentColor" stroke-width="1.8" fill="none"/><path d="m20 20-3.2-3.2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+					<input type="text" id="gv-hub-search-input" placeholder="جستجوی افزونه…" autocomplete="off">
+				</div>
 			</div>
 		</div>
 
-		<div class="gv-hub-grid">
-			<?php foreach ( $items as $item ) :
-				// همه‌ی صفحات، زیرمنوی «groot-vision-hub» هستند و از admin.php?page=... باز می‌شوند.
-				$url    = admin_url( 'admin.php?page=' . $item['page'] );
-				$status = gv_hub_get_item_status( $item );
+		<div class="gv-hub-sections">
+			<?php foreach ( $categories as $cat_key => $cat ) :
+				if ( empty( $grouped[ $cat_key ] ) ) { continue; }
 				?>
-				<a href="<?php echo esc_url( $url ); ?>" class="gv-hub-card" style="--gv-card-color: <?php echo esc_attr( $item['color'] ); ?>;">
-					<div class="gv-hub-card-top">
-						<div class="gv-hub-card-icon"><?php echo esc_html( $item['icon'] ); ?></div>
-						<?php if ( true === $status ) : ?>
-							<span class="gv-hub-status gv-hub-status-on"><i></i> فعال</span>
-						<?php elseif ( false === $status ) : ?>
-							<span class="gv-hub-status gv-hub-status-off"><i></i> غیرفعال</span>
-						<?php elseif ( null !== $item['status_option'] ) : ?>
-							<span class="gv-hub-status gv-hub-status-new"><i></i> تنظیم‌نشده</span>
-						<?php endif; ?>
+				<section class="gv-hub-section" data-section="<?php echo esc_attr( $cat_key ); ?>">
+					<div class="gv-hub-section-head">
+						<span class="gv-hub-section-icon"><?php echo esc_html( $cat['icon'] ); ?></span>
+						<div>
+							<h2><?php echo esc_html( $cat['label'] ); ?></h2>
+							<p><?php echo esc_html( $cat['sub'] ); ?></p>
+						</div>
+						<span class="gv-hub-section-count"><?php echo count( $grouped[ $cat_key ] ); ?> افزونه</span>
 					</div>
-					<h2><?php echo esc_html( $item['title'] ); ?></h2>
-					<p><?php echo esc_html( $item['desc'] ); ?></p>
-					<span class="gv-hub-card-btn">ورود به تنظیمات ←</span>
-				</a>
+
+					<div class="gv-hub-grid">
+						<?php foreach ( $grouped[ $cat_key ] as $item ) :
+							$url    = admin_url( 'admin.php?page=' . $item['page'] );
+							$status = gv_hub_get_item_status( $item );
+							$search_blob = esc_attr( gv_hub_strip_for_search( $item['title'] . ' ' . $item['desc'] ) );
+							?>
+							<a href="<?php echo esc_url( $url ); ?>"
+							   class="gv-hub-card"
+							   data-category="<?php echo esc_attr( $cat_key ); ?>"
+							   data-search="<?php echo $search_blob; ?>"
+							   style="--gv-card-color: <?php echo esc_attr( $item['color'] ); ?>;">
+								<div class="gv-hub-card-top">
+									<div class="gv-hub-card-icon"><?php echo esc_html( $item['icon'] ); ?></div>
+									<?php if ( true === $status ) : ?>
+										<span class="gv-hub-status gv-hub-status-on"><i></i> فعال</span>
+									<?php elseif ( false === $status ) : ?>
+										<span class="gv-hub-status gv-hub-status-off"><i></i> غیرفعال</span>
+									<?php elseif ( null !== $item['status_option'] ) : ?>
+										<span class="gv-hub-status gv-hub-status-new"><i></i> تنظیم‌نشده</span>
+									<?php endif; ?>
+								</div>
+								<h3><?php echo esc_html( $item['title'] ); ?></h3>
+								<p><?php echo esc_html( $item['desc'] ); ?></p>
+								<span class="gv-hub-card-btn">ورود به تنظیمات
+									<svg viewBox="0 0 24 24" width="13" height="13"><path d="M15 6 9 12l6 6" stroke="currentColor" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
+								</span>
+							</a>
+						<?php endforeach; ?>
+					</div>
+				</section>
 			<?php endforeach; ?>
+
+			<p class="gv-hub-empty" id="gv-hub-empty" hidden>چیزی با این جستجو پیدا نشد.</p>
 		</div>
 
 		<!-- ============ بخش تبلیغاتی توسعه‌دهنده ============ -->
 		<div class="gv-hub-promo">
-			<div class="gv-hub-promo-glow"></div>
+			<div class="gv-hub-promo-glow" aria-hidden="true"></div>
 			<div class="gv-hub-promo-inner">
 				<div class="gv-hub-promo-text">
 					<span class="gv-hub-promo-badge">✦ توسعه‌یافته توسط تیم Groot Vision</span>
@@ -325,56 +449,198 @@ function gv_hub_render_page() {
 	</div>
 
 	<style>
-		.gv-hub-wrap{max-width:1100px;margin-top:20px;font-family:'Vazirmatn',Tahoma,sans-serif;}
+		:root{
+			--gv-radius-lg:18px;
+			--gv-radius-md:14px;
+			--gv-radius-sm:10px;
+		}
+
+		/* ---------- توکن‌های رنگ: پوسته روشن ---------- */
+		.gv-hub-wrap[data-theme="light"]{
+			--gv-bg:#F5F3EC;
+			--gv-surface:#FFFFFF;
+			--gv-surface-2:#FBFAF5;
+			--gv-border:#E6E1D3;
+			--gv-text:#1B2B24;
+			--gv-text-muted:#66756B;
+			--gv-accent:#1F6F5C;
+			--gv-accent-soft:rgba(31,111,92,.10);
+			--gv-shadow:0 2px 10px rgba(27,43,36,.06);
+			--gv-shadow-lg:0 18px 40px rgba(27,43,36,.10);
+			--gv-header-a:#0e4037;
+			--gv-header-b:#1c6350;
+			--gv-header-text:#EFF7F1;
+			color-scheme: light;
+		}
+
+		/* ---------- توکن‌های رنگ: پوسته تاریک ---------- */
+		.gv-hub-wrap[data-theme="dark"]{
+			--gv-bg:#0E1613;
+			--gv-surface:#152019;
+			--gv-surface-2:#1A251E;
+			--gv-border:#28352C;
+			--gv-text:#EAF2ED;
+			--gv-text-muted:#8FA398;
+			--gv-accent:#3ED9A0;
+			--gv-accent-soft:rgba(62,217,160,.14);
+			--gv-shadow:0 2px 10px rgba(0,0,0,.25);
+			--gv-shadow-lg:0 20px 46px rgba(0,0,0,.45);
+			--gv-header-a:#081511;
+			--gv-header-b:#12261d;
+			--gv-header-text:#EAF7F0;
+			color-scheme: dark;
+		}
+
+		.gv-hub-wrap{
+			max-width:1180px;margin:20px auto 0;font-family:'Vazirmatn',Tahoma,sans-serif;
+			background:var(--gv-bg);color:var(--gv-text);
+			padding:22px;border-radius:22px;
+			transition:background .25s ease,color .25s ease;
+		}
+		.gv-hub-wrap *{box-sizing:border-box;}
 
 		/* ---------- هدر ---------- */
-		.gv-hub-header{display:flex;align-items:center;justify-content:space-between;background:linear-gradient(120deg,#0e4037,#145c4d);color:#fff;padding:26px 30px;border-radius:16px;margin-bottom:28px;box-shadow:0 10px 30px rgba(14,64,55,.3);flex-wrap:wrap;gap:14px;}
-		.gv-hub-logo{display:flex;align-items:center;gap:16px;}
-		.gv-hub-logo .dashicons{font-size:38px;width:38px;height:38px;color:#facc15;}
-		.gv-hub-logo h1{margin:0;font-size:23px;color:#fff;}
-		.gv-hub-logo p{margin:4px 0 0;font-size:13px;color:#cbd5e1;}
-		.gv-hub-header-stats{display:flex;gap:10px;flex-wrap:wrap;}
-		.gv-hub-badge{padding:7px 16px;border-radius:20px;font-size:12.5px;font-weight:600;white-space:nowrap;}
-		.gv-hub-badge-total{background:rgba(250,204,21,.15);border:1px solid #facc15;color:#facc15;}
-		.gv-hub-badge-active{background:rgba(74,222,128,.15);border:1px solid #4ade80;color:#4ade80;}
+		.gv-hub-header{
+			position:relative;overflow:hidden;
+			background:linear-gradient(135deg,var(--gv-header-a),var(--gv-header-b) 70%);
+			color:var(--gv-header-text);padding:26px 28px 20px;border-radius:var(--gv-radius-lg);
+			margin-bottom:22px;box-shadow:var(--gv-shadow-lg);
+		}
+		.gv-hub-header::before{
+			content:"";position:absolute;inset:0;pointer-events:none;
+			background:radial-gradient(circle at 92% -10%, rgba(255,255,255,.10), transparent 55%);
+		}
+		.gv-hub-header-row{position:relative;display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;}
+		.gv-hub-logo{display:flex;align-items:center;gap:14px;}
+		.gv-hub-logo-mark{
+			width:46px;height:46px;border-radius:13px;display:flex;align-items:center;justify-content:center;
+			background:rgba(255,255,255,.10);color:#8CE9C1;flex-shrink:0;
+		}
+		.gv-hub-logo h1{margin:0;font-size:21px;color:var(--gv-header-text);font-weight:800;}
+		.gv-hub-logo p{margin:4px 0 0;font-size:12.5px;color:rgba(239,247,241,.7);}
+
+		.gv-hub-header-actions{display:flex;align-items:center;gap:12px;flex-wrap:wrap;position:relative;}
+		.gv-hub-header-stats{display:flex;gap:8px;flex-wrap:wrap;}
+		.gv-hub-badge{padding:7px 14px;border-radius:20px;font-size:12px;font-weight:700;white-space:nowrap;border:1px solid transparent;}
+		.gv-hub-badge-total{background:rgba(250,204,21,.14);border-color:rgba(250,204,21,.5);color:#FBD24A;}
+		.gv-hub-badge-active{background:rgba(74,222,128,.14);border-color:rgba(74,222,128,.5);color:#5EE897;}
+
+		.gv-theme-toggle{
+			display:flex;align-items:center;gap:8px;background:rgba(255,255,255,.08);
+			border:1px solid rgba(255,255,255,.18);border-radius:20px;padding:6px 10px;cursor:pointer;color:#fff;
+			transition:background .18s ease;
+		}
+		.gv-theme-toggle:hover{background:rgba(255,255,255,.15);}
+		.gv-theme-toggle-icon{display:flex;color:#FBD24A;}
+		.gv-theme-toggle-icon.gv-icon-moon{color:#B9C9FF;}
+		.gv-theme-toggle-track{
+			width:34px;height:18px;border-radius:20px;background:rgba(255,255,255,.18);
+			position:relative;flex-shrink:0;
+		}
+		.gv-theme-toggle-dot{
+			position:absolute;top:2px;right:2px;width:14px;height:14px;border-radius:50%;
+			background:#fff;transition:transform .22s ease;
+		}
+		.gv-hub-wrap[data-theme="dark"] .gv-theme-toggle-dot{transform:translateX(-16px);}
+
+		/* ---------- نوار ابزار: فیلتر + جستجو ---------- */
+		.gv-hub-toolbar{position:relative;display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;margin-top:20px;}
+		.gv-hub-filters{display:flex;gap:6px;flex-wrap:wrap;}
+		.gv-hub-filter{
+			display:flex;align-items:center;gap:6px;background:rgba(255,255,255,.07);
+			border:1px solid rgba(255,255,255,.14);color:rgba(239,247,241,.85);
+			font-family:inherit;font-size:12px;font-weight:600;padding:7px 12px;border-radius:20px;cursor:pointer;
+			transition:background .15s ease,color .15s ease,border-color .15s ease;
+		}
+		.gv-hub-filter b{font-weight:700;background:rgba(255,255,255,.14);border-radius:10px;padding:1px 6px;font-size:10.5px;}
+		.gv-hub-filter:hover{background:rgba(255,255,255,.13);}
+		.gv-hub-filter.is-active{background:#8CE9C1;border-color:#8CE9C1;color:#0b2019;}
+		.gv-hub-filter.is-active b{background:rgba(11,32,25,.15);}
+
+		.gv-hub-search{
+			display:flex;align-items:center;gap:8px;background:rgba(255,255,255,.08);
+			border:1px solid rgba(255,255,255,.16);border-radius:20px;padding:7px 14px;color:rgba(239,247,241,.65);
+			min-width:200px;
+		}
+		.gv-hub-search input{
+			background:transparent;border:0;outline:0;color:#fff;font-family:inherit;font-size:12.5px;width:100%;
+		}
+		.gv-hub-search input::placeholder{color:rgba(239,247,241,.5);}
+
+		/* ---------- بخش‌های دسته‌بندی ---------- */
+		.gv-hub-sections{display:flex;flex-direction:column;gap:26px;margin-bottom:26px;}
+		.gv-hub-section{position:relative;}
+		.gv-hub-section-head{
+			display:flex;align-items:center;gap:12px;margin-bottom:14px;padding-inline-start:2px;
+		}
+		.gv-hub-section-icon{
+			width:38px;height:38px;border-radius:11px;flex-shrink:0;display:flex;align-items:center;justify-content:center;
+			font-size:18px;background:var(--gv-accent-soft);
+		}
+		.gv-hub-section-head h2{margin:0;font-size:15.5px;font-weight:800;color:var(--gv-text);}
+		.gv-hub-section-head p{margin:2px 0 0;font-size:12px;color:var(--gv-text-muted);}
+		.gv-hub-section-count{margin-inline-start:auto;font-size:11.5px;color:var(--gv-text-muted);background:var(--gv-surface-2);border:1px solid var(--gv-border);padding:4px 10px;border-radius:20px;white-space:nowrap;}
+
+		.gv-hub-empty{text-align:center;color:var(--gv-text-muted);font-size:13px;padding:40px 0;}
 
 		/* ---------- گرید کارت‌ها ---------- */
-		.gv-hub-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:18px;margin-bottom:30px;}
-		@media(max-width:1200px){.gv-hub-grid{grid-template-columns:repeat(2,1fr);}}
+		.gv-hub-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;}
+		@media(max-width:980px){.gv-hub-grid{grid-template-columns:repeat(2,1fr);}}
 		@media(max-width:640px){.gv-hub-grid{grid-template-columns:1fr;}}
 
-		.gv-hub-card{display:block;background:#fff;border:1px solid #e2e8f0;border-top:4px solid var(--gv-card-color);border-radius:16px;padding:22px 20px;text-decoration:none;color:inherit;box-shadow:0 2px 10px rgba(0,0,0,.04);transition:transform .18s ease, box-shadow .18s ease;position:relative;}
-		.gv-hub-card:hover{transform:translateY(-4px);box-shadow:0 14px 30px rgba(0,0,0,.1);color:inherit;}
+		.gv-hub-card{
+			display:flex;flex-direction:column;background:var(--gv-surface);border:1px solid var(--gv-border);
+			border-radius:var(--gv-radius-md);padding:18px 18px 16px;text-decoration:none;color:inherit;
+			box-shadow:var(--gv-shadow);transition:transform .16s ease,box-shadow .16s ease,border-color .16s ease;
+			position:relative;
+		}
+		.gv-hub-card::before{
+			content:"";position:absolute;inset-inline-start:0;top:14px;bottom:14px;width:3px;border-radius:4px;
+			background:var(--gv-card-color);opacity:.85;
+		}
+		.gv-hub-card:hover{transform:translateY(-3px);box-shadow:var(--gv-shadow-lg);border-color:var(--gv-card-color);color:inherit;}
 		.gv-hub-card-top{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:10px;}
-		.gv-hub-card-icon{font-size:28px;}
-		.gv-hub-card h2{font-size:15.5px;margin:0 0 8px;color:#0f172a;}
-		.gv-hub-card p{font-size:12.5px;color:#64748b;line-height:1.85;margin:0 0 16px;min-height:58px;}
-		.gv-hub-card-btn{display:inline-block;font-size:12.5px;font-weight:700;color:var(--gv-card-color);}
+		.gv-hub-card-icon{
+			font-size:20px;width:36px;height:36px;border-radius:10px;display:flex;align-items:center;justify-content:center;
+			background:color-mix(in srgb, var(--gv-card-color) 14%, transparent);
+		}
+		.gv-hub-card h3{font-size:14.5px;margin:0 0 6px;color:var(--gv-text);font-weight:700;}
+		.gv-hub-card p{font-size:12.2px;color:var(--gv-text-muted);line-height:1.85;margin:0 0 14px;}
+		.gv-hub-card-btn{
+			display:inline-flex;align-items:center;gap:5px;font-size:12px;font-weight:700;color:var(--gv-card-color);margin-top:auto;
+		}
+		.gv-hub-card-btn svg{transform:rotate(180deg);transition:transform .16s ease;}
+		.gv-hub-card:hover .gv-hub-card-btn svg{transform:rotate(180deg) translateX(3px);}
 
 		.gv-hub-status{display:inline-flex;align-items:center;gap:5px;font-size:10.5px;font-weight:700;padding:3px 9px;border-radius:20px;}
 		.gv-hub-status i{width:6px;height:6px;border-radius:50%;display:inline-block;}
-		.gv-hub-status-on{background:rgba(74,222,128,.15);color:#15803d;}
+		.gv-hub-status-on{background:rgba(34,197,94,.14);color:#1b9c56;}
 		.gv-hub-status-on i{background:#22c55e;}
-		.gv-hub-status-off{background:rgba(148,163,184,.18);color:#64748b;}
+		.gv-hub-status-off{background:rgba(148,163,184,.18);color:var(--gv-text-muted);}
 		.gv-hub-status-off i{background:#94a3b8;}
-		.gv-hub-status-new{background:rgba(250,204,21,.15);color:#a16207;}
+		.gv-hub-status-new{background:rgba(250,204,21,.16);color:#a16207;}
 		.gv-hub-status-new i{background:#facc15;}
+		.gv-hub-wrap[data-theme="dark"] .gv-hub-status-on{color:#5EE897;}
+		.gv-hub-wrap[data-theme="dark"] .gv-hub-status-new{color:#F3CD68;}
+
+		.gv-hub-card[hidden]{display:none;}
+		.gv-hub-section[hidden]{display:none;}
 
 		/* ---------- بخش تبلیغاتی ---------- */
-		.gv-hub-promo{position:relative;overflow:hidden;border-radius:20px;background:linear-gradient(135deg,#0b1f26,#0e4037 60%,#145c4d);color:#fff;padding:2px;margin-bottom:26px;box-shadow:0 16px 40px rgba(14,64,55,.35);}
-		.gv-hub-promo-glow{position:absolute;inset:-40%;background:radial-gradient(circle at 20% 20%, rgba(74,222,128,.25), transparent 55%), radial-gradient(circle at 85% 80%, rgba(250,204,21,.18), transparent 50%);pointer-events:none;}
-		.gv-hub-promo-inner{position:relative;display:flex;align-items:center;justify-content:space-between;gap:28px;padding:32px 34px;flex-wrap:wrap;}
+		.gv-hub-promo{position:relative;overflow:hidden;border-radius:20px;background:linear-gradient(135deg,#0b1f26,#0e4037 60%,#145c4d);color:#fff;padding:2px;margin-bottom:22px;box-shadow:var(--gv-shadow-lg);}
+		.gv-hub-promo-glow{position:absolute;inset:-40%;background:radial-gradient(circle at 20% 20%, rgba(74,222,128,.22), transparent 55%), radial-gradient(circle at 85% 80%, rgba(250,204,21,.16), transparent 50%);pointer-events:none;}
+		.gv-hub-promo-inner{position:relative;display:flex;align-items:center;justify-content:space-between;gap:28px;padding:30px 32px;flex-wrap:wrap;}
 		.gv-hub-promo-text{flex:1;min-width:280px;}
 		.gv-hub-promo-badge{display:inline-block;background:rgba(74,222,128,.15);border:1px solid #4ade80;color:#4ade80;font-size:11.5px;font-weight:700;padding:5px 14px;border-radius:20px;margin-bottom:14px;}
-		.gv-hub-promo-text h2{margin:0 0 10px;font-size:19px;line-height:1.6;color:#fff;}
-		.gv-hub-promo-text p{margin:0 0 20px;font-size:13.5px;line-height:1.95;color:#cbd5e1;max-width:560px;}
+		.gv-hub-promo-text h2{margin:0 0 10px;font-size:18.5px;line-height:1.6;color:#fff;}
+		.gv-hub-promo-text p{margin:0 0 20px;font-size:13.3px;line-height:1.95;color:#cbd5e1;max-width:560px;}
 		.gv-hub-promo-contacts{display:flex;gap:12px;flex-wrap:wrap;}
 		.gv-hub-promo-contact{display:flex;align-items:center;gap:10px;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.14);border-radius:12px;padding:9px 14px;text-decoration:none;color:#fff;transition:background .18s ease, transform .18s ease;}
 		.gv-hub-promo-contact:hover{background:rgba(255,255,255,.14);transform:translateY(-2px);color:#fff;}
 		.gv-hub-promo-contact-icon{font-size:18px;}
 		.gv-hub-promo-contact b{display:block;font-size:11px;color:#94ded1;font-weight:700;}
 		.gv-hub-promo-contact bdi{display:block;font-size:12.5px;font-weight:600;direction:ltr;text-align:right;}
-		.gv-hub-promo-cta{flex-shrink:0;background:linear-gradient(120deg,#4ade80,#22c55e);color:#052e18 !important;font-weight:800;font-size:14.5px;padding:15px 26px;border-radius:14px;text-decoration:none;box-shadow:0 10px 24px rgba(34,197,94,.35);white-space:nowrap;transition:transform .18s ease, filter .18s ease;}
+		.gv-hub-promo-cta{flex-shrink:0;background:linear-gradient(120deg,#4ade80,#22c55e);color:#052e18 !important;font-weight:800;font-size:14px;padding:15px 26px;border-radius:14px;text-decoration:none;box-shadow:0 10px 24px rgba(34,197,94,.35);white-space:nowrap;transition:transform .18s ease, filter .18s ease;}
 		.gv-hub-promo-cta:hover{transform:translateY(-3px);filter:brightness(1.05);color:#052e18 !important;}
 
 		@media(max-width:700px){
@@ -382,9 +648,91 @@ function gv_hub_render_page() {
 			.gv-hub-promo-text p{max-width:none;}
 			.gv-hub-promo-contacts{justify-content:center;}
 			.gv-hub-promo-cta{text-align:center;}
+			.gv-hub-toolbar{flex-direction:column;align-items:stretch;}
+			.gv-hub-search{min-width:0;}
 		}
 
-		.gv-hub-footer{text-align:center;color:#94a3b8;font-size:12.5px;margin:10px 0;}
+		.gv-hub-footer{text-align:center;color:var(--gv-text-muted);font-size:12.5px;margin:6px 0 4px;}
 	</style>
+
+	<script>
+	(function(){
+		var wrap = document.getElementById('gv-hub-wrap');
+		if (!wrap) return;
+
+		/* ---- تم تاریک/روشن ---- */
+		var STORAGE_KEY = 'gv_hub_theme';
+		var toggle = document.getElementById('gv-theme-toggle');
+		var saved = null;
+		try { saved = window.localStorage.getItem(STORAGE_KEY); } catch(e) {}
+		var initial = saved || ( window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light' );
+		wrap.setAttribute('data-theme', initial);
+		if (toggle) toggle.setAttribute('aria-pressed', initial === 'dark' ? 'true' : 'false');
+
+		if (toggle) {
+			toggle.addEventListener('click', function(){
+				var next = wrap.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+				wrap.setAttribute('data-theme', next);
+				toggle.setAttribute('aria-pressed', next === 'dark' ? 'true' : 'false');
+				try { window.localStorage.setItem(STORAGE_KEY, next); } catch(e) {}
+			});
+		}
+
+		/* ---- فیلتر دسته‌بندی + جستجو ---- */
+		var filterButtons = Array.prototype.slice.call(document.querySelectorAll('#gv-hub-filters .gv-hub-filter'));
+		var sections       = Array.prototype.slice.call(document.querySelectorAll('.gv-hub-section'));
+		var searchInput    = document.getElementById('gv-hub-search-input');
+		var emptyState     = document.getElementById('gv-hub-empty');
+		var activeFilter   = 'all';
+
+		function applyFilters(){
+			var term = (searchInput && searchInput.value ? searchInput.value : '').trim().toLowerCase();
+			var anyVisible = false;
+
+			sections.forEach(function(section){
+				var sectionMatchesCategory = activeFilter === 'all' || section.getAttribute('data-section') === activeFilter;
+				var cards = Array.prototype.slice.call(section.querySelectorAll('.gv-hub-card'));
+				var visibleInSection = 0;
+
+				cards.forEach(function(card){
+					var matchesSearch = !term || (card.getAttribute('data-search') || '').indexOf(term) !== -1;
+					var visible = sectionMatchesCategory && matchesSearch;
+					card.hidden = !visible;
+					if (visible) visibleInSection++;
+				});
+
+				section.hidden = visibleInSection === 0;
+				if (visibleInSection > 0) anyVisible = true;
+			});
+
+			if (emptyState) emptyState.hidden = anyVisible;
+		}
+
+		filterButtons.forEach(function(btn){
+			btn.addEventListener('click', function(){
+				filterButtons.forEach(function(b){
+					b.classList.remove('is-active');
+					b.setAttribute('aria-selected', 'false');
+				});
+				btn.classList.add('is-active');
+				btn.setAttribute('aria-selected', 'true');
+				activeFilter = btn.getAttribute('data-filter');
+				applyFilters();
+			});
+		});
+
+		if (searchInput) {
+			searchInput.addEventListener('input', applyFilters);
+		}
+	})();
+	</script>
 	<?php
+}
+
+/**
+ * متن ساده‌شده (بدون فاصله‌های اضافه) برای جستجوی سمت کلاینت.
+ */
+function gv_hub_strip_for_search( $text ) {
+	$text = wp_strip_all_tags( (string) $text );
+	return mb_strtolower( trim( preg_replace( '/\s+/u', ' ', $text ) ) );
 }
