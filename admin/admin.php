@@ -109,6 +109,15 @@ function gv_hub_get_items() {
 			'status_key'    => 'enabled',
 		),
 		array(
+			'title'         => 'دستیار هوش‌مصنوعی سئو',
+			'desc'          => 'کارمند کلمه کلیدی و توضیحات را وارد می‌کند، بخش سایت (نوشته/برگه/محصول) را انتخاب می‌کند و محتوای سئوشده به‌صورت خودکار تولید و آپلود می‌شود.',
+			'icon'          => '🤖',
+			'page'          => 'gv-ai-seo-writer',
+			'color'         => '#16a34a',
+			'status_option' => null,
+			'status_key'    => null,
+		),
+		array(
 			'title'         => 'کلمات کلیدی سئو',
 			'desc'          => 'جمع‌آوری تمام کلمات کلیدی فوکوس سایت از Yoast / RankMath / AIOSEO / SEOPress در یک‌جا، به‌همراه خروجی CSV.',
 			'icon'          => '🔑',

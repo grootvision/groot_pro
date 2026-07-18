@@ -45,6 +45,9 @@ require_once GV_TOOLS_PATH . 'modules/support_tickets.php';
 /* فایل بهینه‌ساز خودکار تصاویر */
 require_once GV_TOOLS_PATH . 'modules/image_optimizer.php';
 
+/* دستیار هوش‌مصنوعی نویسنده توضیحات و سئوی محصول */
+require_once GV_TOOLS_PATH . 'modules/ai_seo_writer.php';
+
 /*
 |--------------------------------------------------
 | لود داشبورد اصلی
