@@ -148,7 +148,11 @@ function gv_st_get_replies( $ticket_id ) {
 function gv_st_get_ticket_page_url( $key = '' ) {
 	$s = gv_st_get_settings();
 	if ( ! empty( $s['page_id'] ) && get_post_status( $s['page_id'] ) ) {
+		// اگر مدیر یک صفحه‌ی اختصاصی برای شورت‌کد انتخاب کرده باشد، همان استفاده می‌شود.
 		$url = get_permalink( $s['page_id'] );
+	} elseif ( function_exists( 'wc_get_account_endpoint_url' ) ) {
+		// در غیر این‌صورت به تب «تیکت‌های پشتیبانی» داخل حساب کاربری من می‌رود.
+		$url = wc_get_account_endpoint_url( 'tickets' );
 	} else {
 		$url = home_url( '/' );
 	}
@@ -406,34 +410,107 @@ function gv_st_render_shortcode() {
 	ob_start();
 	?>
 	<style>
-		.gvst-box{font-family:'Vazirmatn',Tahoma,sans-serif;max-width:760px;margin:0 auto;direction:rtl;text-align:right;}
-		.gvst-tabs{display:flex;gap:8px;margin-bottom:20px;flex-wrap:wrap;}
-		.gvst-tab-btn{background:#f1f5f4;border:1px solid #e2e8f0;border-radius:10px;padding:10px 20px;font-size:13.5px;font-weight:700;cursor:pointer;color:#0f172a;}
-		.gvst-tab-btn.is-active{background:#0e4037;color:#fff;border-color:#0e4037;}
+		/*
+		 * نکته‌ی مهم: چون این باکس داخل تم قرار می‌گیرد (مخصوصاً داخل «حساب کاربری من»)،
+		 * تمِ سایت متغیرهای رنگیِ خودش (مثل رنگ متن سفید در حالت تیره) را به همه‌چیز تحمیل می‌کند
+		 * و باعث می‌شود متن روی پس‌زمینه‌ی سفید هم سفید دیده شود. برای همین همه‌ی رنگ‌ها و
+		 * فونت‌ها اینجا با !important و به‌صورت صریح ست شده‌اند تا این باکس همیشه ظاهر یکسانی داشته باشد.
+		 */
+		.gvst-box, .gvst-box *{
+			box-sizing:border-box;
+		}
+		.gvst-box{
+			--gv-primary:#0e6b53;
+			--gv-primary-dark:#0a4a3a;
+			--gv-ink:#1b2430;
+			--gv-muted:#6b7684;
+			--gv-border:#e6e9ee;
+			--gv-bg-soft:#f6f8f7;
+			font-family:'Vazirmatn','Yekan Bakh',Tahoma,Arial,sans-serif !important;
+			max-width:800px;margin:0 auto;direction:rtl;text-align:right;
+			color:var(--gv-ink) !important;
+			background:transparent;
+			line-height:1.9;
+		}
+		.gvst-box h1,.gvst-box h2,.gvst-box h3,.gvst-box h4,
+		.gvst-box p,.gvst-box span,.gvst-box div,.gvst-box label,.gvst-box li,.gvst-box a{
+			color:var(--gv-ink) !important;
+		}
+
+		.gvst-tabs{display:flex;gap:10px;margin-bottom:22px;flex-wrap:wrap;}
+		.gvst-tab-btn{
+			background:var(--gv-bg-soft) !important;border:1px solid var(--gv-border) !important;
+			border-radius:12px;padding:11px 22px;font-size:13.5px;font-weight:700;cursor:pointer;
+			color:var(--gv-ink) !important;transition:all .15s ease;
+		}
+		.gvst-tab-btn:hover{border-color:var(--gv-primary) !important;}
+		.gvst-tab-btn.is-active{background:var(--gv-primary) !important;color:#fff !important;border-color:var(--gv-primary) !important;box-shadow:0 4px 14px rgba(14,107,83,.25);}
+
 		.gvst-panel{display:none;}
-		.gvst-panel.is-active{display:block;}
-		.gvst-card{background:#fff;border:1px solid #e2e8f0;border-radius:14px;padding:22px;margin-bottom:16px;box-shadow:0 2px 10px rgba(0,0,0,.03);}
-		.gvst-field{margin-bottom:14px;}
-		.gvst-field label{display:block;font-weight:700;font-size:13px;margin-bottom:6px;}
-		.gvst-field input[type=text],.gvst-field input[type=email],.gvst-field select,.gvst-field textarea,.gvst-field input[type=file]{width:100%;padding:10px 12px;border:1px solid #d1d5db;border-radius:9px;font-family:inherit;font-size:13.5px;box-sizing:border-box;}
-		.gvst-field textarea{min-height:120px;resize:vertical;}
-		.gvst-row{display:grid;grid-template-columns:1fr 1fr;gap:14px;}
+		.gvst-panel.is-active{display:block;animation:gvst-fade .2s ease;}
+		@keyframes gvst-fade{from{opacity:0;transform:translateY(4px);}to{opacity:1;transform:translateY(0);}}
+
+		.gvst-card{
+			background:#ffffff !important;border:1px solid var(--gv-border) !important;border-radius:16px;
+			padding:26px;margin-bottom:18px;box-shadow:0 4px 18px rgba(15,23,42,.05);
+		}
+
+		.gvst-field{margin-bottom:16px;}
+		.gvst-field label{display:block;font-weight:700;font-size:13px;margin-bottom:7px;color:var(--gv-ink) !important;}
+		.gvst-field input[type=text],
+		.gvst-field input[type=email],
+		.gvst-field select,
+		.gvst-field textarea,
+		.gvst-field input[type=file]{
+			width:100%;padding:11px 14px;border:1px solid #d7dce2 !important;border-radius:10px;
+			font-family:inherit !important;font-size:13.5px;background:#fff !important;color:var(--gv-ink) !important;
+			transition:border-color .15s ease, box-shadow .15s ease;
+		}
+		.gvst-field input:focus,.gvst-field select:focus,.gvst-field textarea:focus{
+			outline:none;border-color:var(--gv-primary) !important;box-shadow:0 0 0 3px rgba(14,107,83,.12);
+		}
+		.gvst-field input[readonly]{background:var(--gv-bg-soft) !important;color:var(--gv-muted) !important;}
+		.gvst-field textarea{min-height:130px;resize:vertical;}
+
+		.gvst-row{display:grid;grid-template-columns:1fr 1fr;gap:16px;}
 		@media(max-width:600px){.gvst-row{grid-template-columns:1fr;}}
-		.gvst-btn{background:#0e4037;color:#fff !important;border:none;padding:11px 26px;border-radius:10px;font-weight:700;cursor:pointer;font-size:13.5px;text-decoration:none;display:inline-block;}
-		.gvst-btn-outline{background:#fff;color:#0e4037 !important;border:1px solid #0e4037;}
-		.gvst-btn-danger{background:#b91c1c;}
+
+		.gvst-btn{
+			background:var(--gv-primary) !important;color:#fff !important;border:none;
+			padding:12px 28px;border-radius:11px;font-weight:700;cursor:pointer;font-size:13.5px;
+			text-decoration:none;display:inline-block;transition:background .15s ease, transform .1s ease;
+		}
+		.gvst-btn:hover{background:var(--gv-primary-dark) !important;transform:translateY(-1px);}
+		.gvst-btn-outline{background:#fff !important;color:var(--gv-primary) !important;border:1px solid var(--gv-primary) !important;}
+		.gvst-btn-outline:hover{background:var(--gv-bg-soft) !important;}
+		.gvst-btn-danger{background:#c0342a !important;}
+		.gvst-btn-danger:hover{background:#9e2a22 !important;}
+
 		.gvst-hp{position:absolute;left:-9999px;top:-9999px;}
-		.gvst-notice{padding:12px 16px;border-radius:10px;font-size:13px;margin-bottom:16px;}
-		.gvst-notice-success{background:#dcfce7;color:#166534;}
-		.gvst-notice-error{background:#fee2e2;color:#991b1b;}
-		.gvst-list-item{display:flex;justify-content:space-between;align-items:center;padding:14px 16px;border:1px solid #e2e8f0;border-radius:12px;margin-bottom:10px;flex-wrap:wrap;gap:8px;}
-		.gvst-badge{font-size:11px;font-weight:700;padding:4px 12px;border-radius:20px;color:#fff;white-space:nowrap;}
-		.gvst-msg{padding:14px 16px;border-radius:12px;margin-bottom:12px;max-width:88%;font-size:13.5px;line-height:1.9;}
-		.gvst-msg-user{background:#f1f5f4;margin-left:auto;}
-		.gvst-msg-admin{background:#eff6ff;margin-right:auto;}
-		.gvst-msg-meta{font-size:11px;color:#64748b;margin-bottom:6px;font-weight:700;}
-		.gvst-att{display:inline-block;margin-top:8px;font-size:12px;}
-		.gvst-thread{max-height:520px;overflow-y:auto;padding:6px 4px;margin-bottom:16px;}
+
+		.gvst-notice{padding:13px 18px;border-radius:12px;font-size:13px;margin-bottom:18px;font-weight:600;}
+		.gvst-notice-success{background:#e3f8ec !important;color:#146c3e !important;}
+		.gvst-notice-error{background:#fdeaea !important;color:#9c2b23 !important;}
+
+		.gvst-list-item{
+			display:flex;justify-content:space-between;align-items:center;padding:16px 18px;
+			border:1px solid var(--gv-border) !important;border-radius:14px;margin-bottom:12px;flex-wrap:wrap;gap:10px;
+			background:#fff !important;transition:box-shadow .15s ease;
+		}
+		.gvst-list-item:hover{box-shadow:0 4px 14px rgba(15,23,42,.06);}
+		.gvst-list-item b{color:var(--gv-ink) !important;}
+
+		.gvst-badge{font-size:11px;font-weight:700;padding:5px 14px;border-radius:20px;color:#fff !important;white-space:nowrap;}
+
+		.gvst-thread{max-height:520px;overflow-y:auto;padding:6px 6px;margin-bottom:18px;}
+		.gvst-msg{padding:15px 18px;border-radius:14px;margin-bottom:14px;max-width:88%;font-size:13.5px;line-height:1.95;}
+		.gvst-msg-user{background:var(--gv-bg-soft) !important;margin-left:auto;border:1px solid var(--gv-border) !important;}
+		.gvst-msg-admin{background:#eaf3ff !important;margin-right:auto;border:1px solid #d3e6ff !important;}
+		.gvst-msg-meta{font-size:11px;color:var(--gv-muted) !important;margin-bottom:7px;font-weight:700;}
+		.gvst-att{display:inline-block;margin-top:9px;font-size:12px;}
+		.gvst-att a{color:var(--gv-primary) !important;font-weight:700;}
+
+		.gvst-empty{color:var(--gv-muted) !important;font-size:13px;text-align:center;padding:24px 0;}
 	</style>
 
 	<div class="gvst-box">
@@ -545,7 +622,7 @@ function gv_st_render_new_ticket_form() {
 function gv_st_render_tracking_form() {
 	?>
 	<div class="gvst-card">
-		<p style="font-size:13px;color:#64748b;margin-top:0;">کد پیگیری‌ای که هنگام ثبت تیکت دریافت کرده‌اید (یا در ایمیل تاییدیه ارسال شده) را وارد کنید.</p>
+		<p class="gvst-empty" style="text-align:right;padding:0;margin:0 0 16px;">کد پیگیری‌ای که هنگام ثبت تیکت دریافت کرده‌اید (یا در ایمیل تاییدیه ارسال شده) را وارد کنید.</p>
 		<form method="get" action="">
 			<div class="gvst-field">
 				<label>کد پیگیری تیکت</label>
@@ -565,12 +642,12 @@ function gv_st_render_my_tickets_list() {
 	ob_start();
 	echo '<div class="gvst-card">';
 	if ( empty( $rows ) ) {
-		echo '<p style="color:#94a3b8;">تا الان هیچ تیکتی ثبت نکرده‌اید.</p>';
+		echo '<p class="gvst-empty">تا الان هیچ تیکتی ثبت نکرده‌اید. از تب «ثبت تیکت جدید» می‌توانید تیکت بزنید.</p>';
 	} else {
 		foreach ( $rows as $t ) {
 			$url = gv_st_get_ticket_page_url( $t->ticket_key );
 			echo '<div class="gvst-list-item">
-				<div><b>' . esc_html( $t->subject ) . '</b><br><span style="font-size:11.5px;color:#94a3b8;">آخرین بروزرسانی: ' . esc_html( $t->updated_at ) . '</span></div>
+				<div><b>' . esc_html( $t->subject ) . '</b><br><span style="font-size:11.5px;color:#6b7684;">آخرین بروزرسانی: ' . esc_html( $t->updated_at ) . '</span></div>
 				<div style="display:flex;align-items:center;gap:10px;">
 					<span class="gvst-badge" style="background:' . esc_attr( gv_st_status_color( $t->status ) ) . '">' . esc_html( gv_st_status_label( $t->status ) ) . '</span>
 					<a href="' . esc_url( $url ) . '" class="gvst-btn gvst-btn-outline">مشاهده</a>
@@ -595,7 +672,7 @@ function gv_st_render_thread_view( $key ) {
 		<div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:10px;margin-bottom:16px;">
 			<div>
 				<h3 style="margin:0 0 6px;"><?php echo esc_html( $ticket->subject ); ?></h3>
-				<span style="font-size:12px;color:#94a3b8;">کد پیگیری: <bdi style="direction:ltr;"><?php echo esc_html( $ticket->ticket_key ); ?></bdi></span>
+				<span style="font-size:12px;color:#6b7684;">کد پیگیری: <bdi style="direction:ltr;"><?php echo esc_html( $ticket->ticket_key ); ?></bdi></span>
 			</div>
 			<span class="gvst-badge" style="background:<?php echo esc_attr( gv_st_status_color( $ticket->status ) ); ?>"><?php echo esc_html( gv_st_status_label( $ticket->status ) ); ?></span>
 		</div>
@@ -998,4 +1075,74 @@ function gv_st_render_admin_settings( $s ) {
 		<button type="submit" class="gvsta-btn">💾 ذخیره تنظیمات</button>
 	</form>
 	<?php
+}
+
+/* ==========================================================================
+   ۸) افزودن تب «تیکت‌های پشتیبانی» به داشبورد «حساب کاربری من» ووکامرس
+   ------------------------------------------------------------------------
+   با این کار نیازی به ساخت صفحه‌ی جداگانه یا استفاده از شورت‌کد نیست؛
+   تیکت‌ها دقیقاً کنار «سفارش‌ها»، «دانلودها» و ... در سایدبار حساب کاربری
+   نمایش داده می‌شوند: https://grootvision.ir/my-account/tickets/
+   ========================================================================== */
+
+// ۸.۱) ثبت اندپوینت جدید (تیکت‌ها) برای صفحه‌ی حساب کاربری
+add_action( 'init', 'gv_st_add_account_endpoint' );
+function gv_st_add_account_endpoint() {
+	add_rewrite_endpoint( 'tickets', EP_ROOT | EP_PAGES );
+}
+
+// ۸.۲) معرفی اندپوینت به وردپرس به عنوان یک query var معتبر
+add_filter( 'query_vars', 'gv_st_add_account_query_var' );
+function gv_st_add_account_query_var( $vars ) {
+	$vars[] = 'tickets';
+	return $vars;
+}
+
+// ۸.۳) فلاش کردن یک‌بارهٔ rewrite rules تا لینک my-account/tickets/ کار کند
+add_action( 'init', 'gv_st_maybe_flush_rewrite_rules', 999 );
+function gv_st_maybe_flush_rewrite_rules() {
+	if ( ! get_option( 'gv_st_rewrite_flushed_v1' ) ) {
+		flush_rewrite_rules();
+		update_option( 'gv_st_rewrite_flushed_v1', 1 );
+	}
+}
+
+// ۸.۴) افزودن گزینه «تیکت‌های پشتیبانی» به منوی سایدبار حساب کاربری، درست قبل از «خروج»
+add_filter( 'woocommerce_account_menu_items', 'gv_st_add_account_menu_item' );
+function gv_st_add_account_menu_item( $items ) {
+	$s = gv_st_get_settings();
+	if ( empty( $s['enabled'] ) ) {
+		return $items;
+	}
+
+	$new_items = array();
+	$inserted  = false;
+
+	foreach ( $items as $key => $label ) {
+		if ( 'customer-logout' === $key && ! $inserted ) {
+			$new_items['tickets'] = 'تیکت‌های پشتیبانی';
+			$inserted = true;
+		}
+		$new_items[ $key ] = $label;
+	}
+	// اگر به هر دلیلی «خروج» در لیست نبود، در انتها اضافه شود
+	if ( ! $inserted ) {
+		$new_items['tickets'] = 'تیکت‌های پشتیبانی';
+	}
+
+	return $new_items;
+}
+
+// ۸.۵) عنوان صفحه هنگام مشاهده‌ی این تب داخل حساب کاربری
+add_filter( 'woocommerce_endpoint_tickets_title', 'gv_st_account_endpoint_title' );
+function gv_st_account_endpoint_title( $title ) {
+	return 'تیکت‌های پشتیبانی';
+}
+
+// ۸.۶) رندر محتوای تیکت‌ها داخل همان تب، دقیقاً مثل شورت‌کد [gv_tickets]
+add_action( 'woocommerce_account_tickets_endpoint', 'gv_st_render_account_endpoint_content' );
+function gv_st_render_account_endpoint_content() {
+	echo '<div class="gvst-account-wrap">';
+	echo gv_st_render_shortcode();
+	echo '</div>';
 }
