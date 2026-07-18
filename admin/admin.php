@@ -19,8 +19,8 @@ add_action( 'admin_menu', 'gv_hub_register_menu', 5 ); // اولویت ۵ = زو
 function gv_hub_register_menu() {
 
 	add_menu_page(
-		'افزونه‌های گروت ویژن',
-		'افزونه‌های گروت',
+		'افزونه‌های ضروری گروت ویژن',
+		'گروت ویژن پرو',
 		'manage_options',
 		GV_HUB_SLUG,
 		'gv_hub_render_page',
@@ -313,7 +313,7 @@ function gv_hub_render_page() {
 						</svg>
 					</span>
 					<div>
-						<h1>افزونه‌های گروت ویژن</h1>
+						<h1>افزونه‌های ضروری گروت ویژن</h1>
 						<p>مدیریت یکپارچه‌ی تمام ابزارهای نصب‌شده روی سایت شما</p>
 					</div>
 				</div>
