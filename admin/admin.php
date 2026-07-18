@@ -180,6 +180,15 @@ array(
 	'status_option' => GV_ST_OPT,
 	'status_key'    => 'enabled',
 ),
+array(
+	'title'         => 'بهینه‌ساز خودکار تصاویر',
+	'desc'          => 'فشرده‌سازی خودکار تصاویر سنگین هنگام آپلود (بدون افت کیفیت یا ابعاد) و پاک‌سازی خودکار نسخه‌ی اصلیِ سنگین بعد از مدت مشخص برای صرفه‌جویی در فضای هاست.',
+	'icon'          => '🖼️',
+	'page'          => GV_IMGOPT_PAGE_SLUG,
+	'color'         => '#059669',
+	'status_option' => GV_IMGOPT_OPT,
+	'status_key'    => 'enabled',
+),
 
 	);
 }
