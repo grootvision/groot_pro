@@ -16,6 +16,10 @@ if ( ! defined( 'ABSPATH' ) ) { exit; }
  *  ۴) اگر ادمین کاری نکند، دقیقاً ۱۵ دقیقه (قابل تغییر) بعد از
  *     آپلود، به‌صورت خودکار توسط WP-Cron پاک می‌شود تا فضای
  *     هاست هدر نرود.
+ *
+ *  + بخش دوم همین فایل (پایین‌تر): ماژول «همگام‌ساز عنوان و آلت
+ *    تصاویر» که عنوان/آلت تصاویر داخل هر محتوا را با عنوان همان
+ *    محتوا یکی نگه می‌دارد و امکان اسکن/ممیزی کل سایت را می‌دهد.
  * ==========================================================
  */
 
@@ -403,6 +407,445 @@ function gv_imgopt_render_admin_page() {
 						</form>
 					</div>
 				<?php endforeach; ?>
+			<?php endif; ?>
+		</div>
+
+		<p style="font-size:11.5px;color:#888;text-align:center;margin-top:24px;">ساخته و توسعه‌یافته توسط <strong>Groot Vision</strong></p>
+	</div>
+	<?php
+}
+
+
+/* ==========================================================================
+   ==========================================================================
+    از این‌جا به بعد: ماژول «همگام‌ساز عنوان و آلت تصاویر»
+   ==========================================================================
+   ------------------------------------------------------------
+   نحوه‌ی کار:
+   ۱) وقتی یک پست/صفحه ذخیره می‌شود، تمام تصاویری که داخل محتوایش
+      استفاده شده (چه از ادیتور معمولی/گوتنبرگ، چه از المنتور)
+      پیدا می‌شوند و عنوان + متن جایگزین (Alt) هرکدام دقیقاً برابر
+      با عنوان همان پست/صفحه تنظیم می‌شود.
+   ۲) یک دکمه‌ی «اسکن سایت» وجود دارد که کل محتوای سایت را بررسی
+      می‌کند و هر تصویری که عنوان/آلتش با عنوان محتوایی که در آن
+      استفاده شده یکی نباشد را به همراه لینک ادیت تصویر، لینک ادیت
+      محتوا، نام فایل، و نویسنده‌ی محتوا در یک لیست نشان می‌دهد.
+   ========================================================================== */
+
+define( 'GV_IMGSYNC_OPT', 'gv_image_title_sync_settings' );
+define( 'GV_IMGSYNC_NONCE', 'gv_imgsync_nonce_action' );
+define( 'GV_IMGSYNC_PAGE_SLUG', 'gv-image-title-sync' );
+define( 'GV_IMGSYNC_TRANSIENT', 'gv_imgsync_audit_results' );
+
+/* ==========================================================================
+   ۰) تنظیمات پیش‌فرض
+   ========================================================================== */
+function gv_imgsync_default_settings() {
+	return array(
+		'enabled'        => 1,
+		'sync_title'     => 1,
+		'sync_alt'       => 1,
+		'sync_featured'  => 1,
+		'post_types'     => array( 'post', 'page' ),
+	);
+}
+
+function gv_imgsync_get_settings() {
+	$s = wp_parse_args( get_option( GV_IMGSYNC_OPT, array() ), gv_imgsync_default_settings() );
+	if ( ! is_array( $s['post_types'] ) || empty( $s['post_types'] ) ) {
+		$s['post_types'] = array( 'post', 'page' );
+	}
+	return $s;
+}
+
+/* ==========================================================================
+   ۱) استخراج شناسه‌ی تصاویر استفاده‌شده در یک محتوا
+   ------------------------------------------------------------------------
+   الف) از متن HTML (ادیتور کلاسیک / گوتنبرگ): از روی class="wp-image-123"
+        که وردپرس هنگام درج تصویر از کتابخانه‌ی رسانه اضافه می‌کند.
+   ب)  از داده‌ی المنتور (_elementor_data که JSON است): به‌صورت بازگشتی
+        دنبال آرایه‌هایی می‌گردیم که همزمان کلید id و url دارند و url
+        به یک فایل آپلودی اشاره می‌کند (الگوی استاندارد کنترل تصویر المنتور).
+   ========================================================================== */
+function gv_imgsync_extract_ids_from_html( $content ) {
+	$ids = array();
+	if ( ! is_string( $content ) || '' === $content ) { return $ids; }
+	if ( preg_match_all( '/wp-image-(\d+)/', $content, $m ) ) {
+		foreach ( $m[1] as $id ) { $ids[] = intval( $id ); }
+	}
+	return $ids;
+}
+
+function gv_imgsync_walk_elementor_node( $node, array &$ids ) {
+	if ( is_array( $node ) ) {
+		if ( isset( $node['id'], $node['url'] ) && is_numeric( $node['id'] ) && is_string( $node['url'] )
+			&& false !== strpos( $node['url'], '/wp-content/uploads/' ) ) {
+			$ids[] = intval( $node['id'] );
+		}
+		foreach ( $node as $value ) {
+			if ( is_array( $value ) ) {
+				gv_imgsync_walk_elementor_node( $value, $ids );
+			}
+		}
+	}
+}
+
+function gv_imgsync_extract_ids_from_elementor( $post_id ) {
+	$ids = array();
+	$raw = get_post_meta( $post_id, '_elementor_data', true );
+	if ( empty( $raw ) ) { return $ids; }
+	$data = json_decode( $raw, true );
+	if ( ! is_array( $data ) ) {
+		// بعضی نسخه‌ها اسلش زده ذخیره می‌کنند
+		$data = json_decode( wp_unslash( $raw ), true );
+	}
+	if ( is_array( $data ) ) {
+		gv_imgsync_walk_elementor_node( $data, $ids );
+	}
+	return $ids;
+}
+
+/**
+ * تمام شناسه‌های تصاویرِ (فقط عکس، نه پیوست‌های دیگر) استفاده‌شده در یک محتوا
+ */
+function gv_imgsync_collect_image_ids( $post_id, $content, $include_featured = true ) {
+	$ids = array_merge(
+		gv_imgsync_extract_ids_from_html( $content ),
+		gv_imgsync_extract_ids_from_elementor( $post_id )
+	);
+
+	if ( $include_featured ) {
+		$thumb_id = get_post_thumbnail_id( $post_id );
+		if ( $thumb_id ) { $ids[] = intval( $thumb_id ); }
+	}
+
+	$ids = array_unique( array_filter( $ids ) );
+	// فقط پیوست‌هایی که واقعاً تصویر هستند نگه داشته شوند
+	$ids = array_values( array_filter( $ids, function ( $id ) {
+		return 'attachment' === get_post_type( $id ) && wp_attachment_is_image( $id );
+	} ) );
+	return $ids;
+}
+
+/* ==========================================================================
+   ۲) همگام‌سازی خودکار هنگام ذخیره‌ی پست/صفحه
+   ========================================================================== */
+add_action( 'save_post', 'gv_imgsync_sync_post_images', 25, 2 );
+function gv_imgsync_sync_post_images( $post_id, $post ) {
+	$s = gv_imgsync_get_settings();
+	if ( empty( $s['enabled'] ) ) { return; }
+	if ( wp_is_post_autosave( $post_id ) || wp_is_post_revision( $post_id ) ) { return; }
+	if ( ! in_array( $post->post_type, $s['post_types'], true ) ) { return; }
+	if ( in_array( $post->post_status, array( 'auto-draft', 'trash' ), true ) ) { return; }
+
+	$title = trim( $post->post_title );
+	if ( '' === $title ) { return; } // بدون عنوان، همگام‌سازی معنا ندارد
+
+	$image_ids = gv_imgsync_collect_image_ids( $post_id, $post->post_content, ! empty( $s['sync_featured'] ) );
+	foreach ( $image_ids as $image_id ) {
+		gv_imgsync_apply_title_to_attachment( $image_id, $title, $s );
+	}
+}
+
+function gv_imgsync_apply_title_to_attachment( $attachment_id, $title, $s = null ) {
+	if ( null === $s ) { $s = gv_imgsync_get_settings(); }
+
+	if ( ! empty( $s['sync_title'] ) ) {
+		$current = get_the_title( $attachment_id );
+		if ( $current !== $title ) {
+			wp_update_post( array(
+				'ID'         => $attachment_id,
+				'post_title' => $title,
+			) );
+		}
+	}
+
+	if ( ! empty( $s['sync_alt'] ) ) {
+		$current_alt = get_post_meta( $attachment_id, '_wp_attachment_image_alt', true );
+		if ( $current_alt !== $title ) {
+			update_post_meta( $attachment_id, '_wp_attachment_image_alt', wp_strip_all_tags( $title, true ) );
+		}
+	}
+}
+
+/* ==========================================================================
+   ۳) اسکن کل سایت (ممیزی) — پیدا کردن عکس‌هایی که عنوان/آلت‌شان با محتوا نمی‌خواند
+   ========================================================================== */
+function gv_imgsync_run_audit() {
+	$s = gv_imgsync_get_settings();
+	$results = array();
+
+	$query = new WP_Query( array(
+		'post_type'      => ! empty( $s['post_types'] ) ? $s['post_types'] : array( 'post', 'page' ),
+		'post_status'    => array( 'publish', 'draft', 'pending', 'private', 'future' ),
+		'posts_per_page' => -1,
+		'no_found_rows'  => true,
+		'fields'         => 'ids',
+	) );
+
+	foreach ( $query->posts as $post_id ) {
+		$post = get_post( $post_id );
+		if ( ! $post ) { continue; }
+		$title = trim( $post->post_title );
+		if ( '' === $title ) { continue; }
+
+		$image_ids = gv_imgsync_collect_image_ids( $post_id, $post->post_content, ! empty( $s['sync_featured'] ) );
+		if ( empty( $image_ids ) ) { continue; }
+
+		$author = get_userdata( $post->post_author );
+
+		foreach ( $image_ids as $image_id ) {
+			$img_title = get_the_title( $image_id );
+			$img_alt   = get_post_meta( $image_id, '_wp_attachment_image_alt', true );
+
+			$title_mismatch = ! empty( $s['sync_title'] ) && ( $img_title !== $title );
+			$alt_mismatch   = ! empty( $s['sync_alt'] ) && ( $img_alt !== $title );
+
+			if ( ! $title_mismatch && ! $alt_mismatch ) { continue; }
+
+			$file = get_attached_file( $image_id );
+
+			$results[] = array(
+				'post_id'        => $post_id,
+				'post_title'     => $title,
+				'post_type'      => $post->post_type,
+				'post_edit_link' => get_edit_post_link( $post_id, '' ),
+				'post_view_link' => get_permalink( $post_id ),
+				'author_name'    => $author ? $author->display_name : '—',
+				'image_id'       => $image_id,
+				'image_title'    => $img_title,
+				'image_alt'      => $img_alt,
+				'image_file'     => $file ? basename( $file ) : '',
+				'image_edit_link'=> get_edit_post_link( $image_id, '' ),
+				'title_mismatch' => $title_mismatch,
+				'alt_mismatch'   => $alt_mismatch,
+			);
+		}
+	}
+
+	set_transient( GV_IMGSYNC_TRANSIENT, array(
+		'items'      => $results,
+		'scanned_at' => current_time( 'mysql' ),
+	), DAY_IN_SECONDS );
+
+	return $results;
+}
+
+add_action( 'admin_post_gv_imgsync_run_scan', 'gv_imgsync_handle_run_scan' );
+function gv_imgsync_handle_run_scan() {
+	if ( ! current_user_can( 'manage_options' ) ) { wp_die( 'دسترسی ندارید.' ); }
+	check_admin_referer( GV_IMGSYNC_NONCE );
+	gv_imgsync_run_audit();
+	wp_safe_redirect( admin_url( 'admin.php?page=' . GV_IMGSYNC_PAGE_SLUG . '&scanned=1' ) );
+	exit;
+}
+
+/**
+ * تصحیح دستی یک مورد مستقیماً از داخل لیست ممیزی (بدون نیاز به ورود به ادیتور پیوست)
+ */
+add_action( 'admin_post_gv_imgsync_fix_one', 'gv_imgsync_handle_fix_one' );
+function gv_imgsync_handle_fix_one() {
+	if ( ! current_user_can( 'manage_options' ) ) { wp_die( 'دسترسی ندارید.' ); }
+	check_admin_referer( GV_IMGSYNC_NONCE );
+
+	$image_id = intval( $_POST['image_id'] ?? 0 );
+	$title    = sanitize_text_field( $_POST['post_title'] ?? '' );
+	if ( $image_id && '' !== $title ) {
+		gv_imgsync_apply_title_to_attachment( $image_id, $title );
+		// این مورد را از نتایج ذخیره‌شده‌ی ممیزی هم حذف کن تا لیست بلافاصله به‌روز شود
+		$cached = get_transient( GV_IMGSYNC_TRANSIENT );
+		if ( is_array( $cached ) && ! empty( $cached['items'] ) ) {
+			$cached['items'] = array_values( array_filter( $cached['items'], function ( $row ) use ( $image_id ) {
+				return intval( $row['image_id'] ) !== $image_id;
+			} ) );
+			set_transient( GV_IMGSYNC_TRANSIENT, $cached, DAY_IN_SECONDS );
+		}
+	}
+
+	wp_safe_redirect( admin_url( 'admin.php?page=' . GV_IMGSYNC_PAGE_SLUG . '&fixed=1' ) );
+	exit;
+}
+
+/* ==========================================================================
+   ۴) ذخیره تنظیمات
+   ========================================================================== */
+add_action( 'admin_post_gv_imgsync_save_settings', 'gv_imgsync_save_settings' );
+function gv_imgsync_save_settings() {
+	if ( ! current_user_can( 'manage_options' ) ) { wp_die( 'دسترسی ندارید.' ); }
+	check_admin_referer( GV_IMGSYNC_NONCE );
+
+	$post_types = isset( $_POST['post_types'] ) && is_array( $_POST['post_types'] )
+		? array_map( 'sanitize_key', $_POST['post_types'] )
+		: array( 'post', 'page' );
+
+	$settings = array(
+		'enabled'       => isset( $_POST['enabled'] ) ? 1 : 0,
+		'sync_title'    => isset( $_POST['sync_title'] ) ? 1 : 0,
+		'sync_alt'      => isset( $_POST['sync_alt'] ) ? 1 : 0,
+		'sync_featured' => isset( $_POST['sync_featured'] ) ? 1 : 0,
+		'post_types'    => $post_types,
+	);
+	update_option( GV_IMGSYNC_OPT, $settings );
+	wp_safe_redirect( admin_url( 'admin.php?page=' . GV_IMGSYNC_PAGE_SLUG . '&updated=1' ) );
+	exit;
+}
+
+/* ==========================================================================
+   ۵) منوی مدیریت
+   ========================================================================== */
+add_action( 'admin_menu', 'gv_imgsync_admin_menu' );
+function gv_imgsync_admin_menu() {
+	add_submenu_page(
+		'groot-vision-hub',
+		'همگام‌ساز عنوان تصاویر | Groot Vision',
+		'🏷️ همگام‌ساز عنوان تصاویر',
+		'manage_options',
+		GV_IMGSYNC_PAGE_SLUG,
+		'gv_imgsync_render_admin_page'
+	);
+}
+
+/* ==========================================================================
+   ۶) رندر صفحه مدیریت
+   ========================================================================== */
+function gv_imgsync_render_admin_page() {
+	if ( ! current_user_can( 'manage_options' ) ) { return; }
+	$s = gv_imgsync_get_settings();
+
+	$cached      = get_transient( GV_IMGSYNC_TRANSIENT );
+	$results     = is_array( $cached ) && ! empty( $cached['items'] ) ? $cached['items'] : array();
+	$scanned_at  = is_array( $cached ) ? ( $cached['scanned_at'] ?? '' ) : '';
+
+	$post_type_objects = get_post_types( array( 'public' => true ), 'objects' );
+	?>
+	<div class="wrap" dir="rtl" style="font-family:'Vazirmatn',Tahoma,sans-serif;max-width:1100px;">
+		<style>
+			.gvis-header{background:linear-gradient(120deg,#3730a3,#4338ca);color:#fff;padding:22px 26px;border-radius:14px;margin:20px 0;}
+			.gvis-header h1{margin:0;font-size:20px;color:#fff;}
+			.gvis-header p{margin:8px 0 0;font-size:13px;color:#e0e7ff;line-height:1.9;}
+			.gvis-card{background:#fff;border:1px solid #e5e7eb;border-radius:14px;padding:22px;margin-bottom:18px;}
+			.gvis-card h2{margin-top:0;font-size:15px;}
+			.gvis-field{margin-bottom:12px;}
+			.gvis-field label{font-weight:700;font-size:13px;}
+			.gvis-checks{display:flex;flex-wrap:wrap;gap:16px;margin:10px 0;}
+			.gvis-checks label{font-weight:400;font-size:13px;display:flex;align-items:center;gap:6px;}
+			.gvis-btn{background:#111827;color:#fff !important;border:none;padding:10px 22px;border-radius:10px;font-weight:600;cursor:pointer;text-decoration:none;display:inline-block;}
+			.gvis-btn-scan{background:#4338ca;}
+			.gvis-btn-small{padding:6px 14px;font-size:12px;border-radius:8px;}
+			table.gvis-table{width:100%;border-collapse:collapse;font-size:12.5px;}
+			table.gvis-table th{text-align:right;background:#f8fafc;padding:9px 10px;border-bottom:2px solid #e5e7eb;}
+			table.gvis-table td{padding:9px 10px;border-bottom:1px solid #eef1f4;vertical-align:top;}
+			.gvis-tag{display:inline-block;font-size:10.5px;font-weight:700;padding:3px 8px;border-radius:20px;margin-left:4px;}
+			.gvis-tag-title{background:#fee2e2;color:#991b1b;}
+			.gvis-tag-alt{background:#fef3c7;color:#92400e;}
+			.gvis-muted{color:#94a3b8;font-size:11.5px;}
+		</style>
+
+		<div class="gvis-header">
+			<h1>🏷️ همگام‌ساز عنوان و آلت تصاویر</h1>
+			<p>
+				از این پس، هر عکسی که داخل محتوای یک پست یا صفحه (چه از ادیتور وردپرس، چه از المنتور) استفاده شود،
+				عنوان و متن جایگزین (Alt) آن خودکار برابر با عنوان همان محتوا تنظیم می‌شود.
+				با دکمه‌ی اسکن، می‌توانید محتوای قبلی سایت را هم بررسی و مغایرت‌ها را پیدا کنید.
+			</p>
+		</div>
+
+		<?php if ( isset( $_GET['updated'] ) ) : ?><div class="notice notice-success is-dismissible"><p>تنظیمات ذخیره شد.</p></div><?php endif; ?>
+		<?php if ( isset( $_GET['scanned'] ) ) : ?><div class="notice notice-success is-dismissible"><p>اسکن سایت انجام شد.</p></div><?php endif; ?>
+		<?php if ( isset( $_GET['fixed'] ) ) : ?><div class="notice notice-success is-dismissible"><p>عنوان/آلت تصویر اصلاح شد.</p></div><?php endif; ?>
+
+		<div class="gvis-card">
+			<h2>⚙️ تنظیمات</h2>
+			<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>">
+				<input type="hidden" name="action" value="gv_imgsync_save_settings">
+				<?php wp_nonce_field( GV_IMGSYNC_NONCE ); ?>
+				<div class="gvis-field"><label><input type="checkbox" name="enabled" <?php checked( $s['enabled'], 1 ); ?>> فعال‌سازی همگام‌سازی خودکار</label></div>
+				<div class="gvis-field">
+					<label>چه چیزی همگام‌سازی شود؟</label>
+					<div class="gvis-checks">
+						<label><input type="checkbox" name="sync_title" <?php checked( $s['sync_title'], 1 ); ?>> عنوان تصویر</label>
+						<label><input type="checkbox" name="sync_alt" <?php checked( $s['sync_alt'], 1 ); ?>> متن جایگزین (Alt)</label>
+						<label><input type="checkbox" name="sync_featured" <?php checked( $s['sync_featured'], 1 ); ?>> شامل تصویر شاخص هم بشود</label>
+					</div>
+				</div>
+				<div class="gvis-field">
+					<label>روی کدام نوع محتوا اعمال شود؟</label>
+					<div class="gvis-checks">
+						<?php foreach ( $post_type_objects as $pt_slug => $pt_obj ) :
+							if ( 'attachment' === $pt_slug ) { continue; }
+						?>
+							<label><input type="checkbox" name="post_types[]" value="<?php echo esc_attr( $pt_slug ); ?>" <?php checked( in_array( $pt_slug, $s['post_types'], true ) ); ?>> <?php echo esc_html( $pt_obj->labels->name ); ?></label>
+						<?php endforeach; ?>
+					</div>
+				</div>
+				<button type="submit" class="gvis-btn">💾 ذخیره تنظیمات</button>
+			</form>
+		</div>
+
+		<div class="gvis-card">
+			<h2>🔍 اسکن سایت</h2>
+			<p class="gvis-muted">
+				<?php if ( $scanned_at ) : ?>
+					آخرین اسکن: <?php echo esc_html( $scanned_at ); ?> — <?php echo esc_html( count( $results ) ); ?> مورد مغایرت پیدا شد.
+				<?php else : ?>
+					هنوز اسکنی انجام نشده است.
+				<?php endif; ?>
+			</p>
+			<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" onsubmit="return confirm('این کار ممکن است روی سایت‌های بزرگ کمی طول بکشد. ادامه می‌دهید؟');">
+				<input type="hidden" name="action" value="gv_imgsync_run_scan">
+				<?php wp_nonce_field( GV_IMGSYNC_NONCE ); ?>
+				<button type="submit" class="gvis-btn gvis-btn-scan">🔍 اسکن مجدد سایت</button>
+			</form>
+		</div>
+
+		<div class="gvis-card">
+			<h2>📋 عکس‌هایی که عنوان/آلت‌شان با عنوان محتوا یکی نیست</h2>
+			<?php if ( empty( $results ) ) : ?>
+				<p class="gvis-muted">موردی برای نمایش نیست — یا هنوز اسکن نشده، یا همه چیز مرتب است.</p>
+			<?php else : ?>
+				<table class="gvis-table">
+					<thead>
+						<tr>
+							<th>محتوا</th>
+							<th>نویسنده محتوا</th>
+							<th>تصویر</th>
+							<th>عنوان فعلی تصویر</th>
+							<th>آلت فعلی تصویر</th>
+							<th>مغایرت</th>
+							<th>عملیات</th>
+						</tr>
+					</thead>
+					<tbody>
+					<?php foreach ( $results as $row ) : ?>
+						<tr>
+							<td>
+								<a href="<?php echo esc_url( $row['post_edit_link'] ); ?>" target="_blank"><?php echo esc_html( $row['post_title'] ); ?></a><br>
+								<span class="gvis-muted"><?php echo esc_html( $row['post_type'] ); ?> · <a href="<?php echo esc_url( $row['post_view_link'] ); ?>" target="_blank">مشاهده</a></span>
+							</td>
+							<td><?php echo esc_html( $row['author_name'] ); ?></td>
+							<td>
+								<?php echo wp_get_attachment_image( $row['image_id'], array( 44, 44 ) ); ?><br>
+								<a href="<?php echo esc_url( $row['image_edit_link'] ); ?>" target="_blank" class="gvis-muted"><?php echo esc_html( $row['image_file'] ); ?></a>
+							</td>
+							<td><?php echo esc_html( $row['image_title'] ?: '—' ); ?></td>
+							<td><?php echo esc_html( $row['image_alt'] ?: '—' ); ?></td>
+							<td>
+								<?php if ( $row['title_mismatch'] ) : ?><span class="gvis-tag gvis-tag-title">عنوان</span><?php endif; ?>
+								<?php if ( $row['alt_mismatch'] ) : ?><span class="gvis-tag gvis-tag-alt">آلت</span><?php endif; ?>
+							</td>
+							<td>
+								<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>">
+									<input type="hidden" name="action" value="gv_imgsync_fix_one">
+									<input type="hidden" name="image_id" value="<?php echo esc_attr( $row['image_id'] ); ?>">
+									<input type="hidden" name="post_title" value="<?php echo esc_attr( $row['post_title'] ); ?>">
+									<?php wp_nonce_field( GV_IMGSYNC_NONCE ); ?>
+									<button type="submit" class="gvis-btn gvis-btn-small">✅ اصلاح خودکار</button>
+								</form>
+							</td>
+						</tr>
+					<?php endforeach; ?>
+					</tbody>
+				</table>
 			<?php endif; ?>
 		</div>
 
