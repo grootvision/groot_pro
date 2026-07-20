@@ -708,6 +708,19 @@ function gv_imgsync_admin_menu() {
 /* ==========================================================================
    ۶) رندر صفحه مدیریت
    ========================================================================== */
+/**
+ * کوتاه‌کردن متن‌های طولانی برای نمایش تمیز داخل جدول.
+ * متن کامل همیشه در attribute مربوطه (title) نگه داشته می‌شود تا با هاور موس دیده شود.
+ */
+function gv_imgsync_shorten( $text, $max_len = 28 ) {
+	$text = trim( (string) $text );
+	if ( '' === $text ) { return ''; }
+	if ( function_exists( 'mb_strlen' ) && mb_strlen( $text ) > $max_len ) {
+		return mb_substr( $text, 0, $max_len ) . '…';
+	}
+	return $text;
+}
+
 function gv_imgsync_render_admin_page() {
 	if ( ! current_user_can( 'manage_options' ) ) { return; }
 	$s = gv_imgsync_get_settings();
@@ -732,12 +745,33 @@ function gv_imgsync_render_admin_page() {
 			.gvis-btn{background:#111827;color:#fff !important;border:none;padding:10px 22px;border-radius:10px;font-weight:600;cursor:pointer;text-decoration:none;display:inline-block;}
 			.gvis-btn-scan{background:#4338ca;}
 			.gvis-btn-small{padding:6px 14px;font-size:12px;border-radius:8px;}
-			table.gvis-table{width:100%;border-collapse:collapse;font-size:12.5px;}
-			table.gvis-table th{text-align:right;background:#f8fafc;padding:9px 10px;border-bottom:2px solid #e5e7eb;}
-			table.gvis-table td{padding:9px 10px;border-bottom:1px solid #eef1f4;vertical-align:top;}
-			.gvis-tag{display:inline-block;font-size:10.5px;font-weight:700;padding:3px 8px;border-radius:20px;margin-left:4px;}
+			.gvis-table-scroll{width:100%;overflow-x:auto;border:1px solid #e5e7eb;border-radius:14px;}
+			table.gvis-table{width:100%;min-width:840px;border-collapse:separate;border-spacing:0;font-size:12.5px;table-layout:fixed;}
+			table.gvis-table col.gvis-col-content{width:20%;}
+			table.gvis-table col.gvis-col-author{width:10%;}
+			table.gvis-table col.gvis-col-image{width:18%;}
+			table.gvis-table col.gvis-col-text{width:15%;}
+			table.gvis-table col.gvis-col-mismatch{width:11%;}
+			table.gvis-table col.gvis-col-action{width:11%;}
+			table.gvis-table thead th{text-align:right;background:linear-gradient(180deg,#f8fafc,#eef1f7);color:#334155;font-size:11.5px;font-weight:800;letter-spacing:.2px;padding:12px 12px;border-bottom:2px solid #e2e8f0;}
+			table.gvis-table thead th:first-child{border-top-right-radius:13px;}
+			table.gvis-table thead th:last-child{border-top-left-radius:13px;}
+			table.gvis-table td{padding:11px 12px;border-bottom:1px solid #eef1f4;vertical-align:middle;overflow:hidden;}
+			table.gvis-table tbody tr{transition:background .12s ease;}
+			table.gvis-table tbody tr:nth-child(even){background:#fafbff;}
+			table.gvis-table tbody tr:hover{background:#eef2ff;}
+			table.gvis-table tbody tr:last-child td{border-bottom:0;}
+			.gvis-ellipsis{display:inline-block;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;vertical-align:middle;cursor:default;}
+			a.gvis-ellipsis{color:#3730a3;text-decoration:none;font-weight:700;}
+			a.gvis-ellipsis:hover{text-decoration:underline;}
+			.gvis-thumb-wrap{display:flex;flex-direction:column;gap:6px;align-items:flex-start;max-width:100%;}
+			.gvis-thumb-wrap img.gvis-thumb{width:40px;height:40px;object-fit:cover;border-radius:9px;border:1px solid #e2e8f0;box-shadow:0 1px 3px rgba(15,23,42,.12);}
+			.gvis-tag{display:inline-flex;align-items:center;gap:5px;font-size:10.5px;font-weight:700;padding:4px 10px 4px 8px;border-radius:20px;margin:0 0 3px 4px;}
+			.gvis-tag::before{content:"";width:6px;height:6px;border-radius:50%;flex-shrink:0;}
 			.gvis-tag-title{background:#fee2e2;color:#991b1b;}
+			.gvis-tag-title::before{background:#ef4444;}
 			.gvis-tag-alt{background:#fef3c7;color:#92400e;}
+			.gvis-tag-alt::before{background:#f59e0b;}
 			.gvis-muted{color:#94a3b8;font-size:11.5px;}
 		</style>
 
@@ -803,7 +837,17 @@ function gv_imgsync_render_admin_page() {
 			<?php if ( empty( $results ) ) : ?>
 				<p class="gvis-muted">موردی برای نمایش نیست — یا هنوز اسکن نشده، یا همه چیز مرتب است.</p>
 			<?php else : ?>
+				<div class="gvis-table-scroll">
 				<table class="gvis-table">
+					<colgroup>
+						<col class="gvis-col-content">
+						<col class="gvis-col-author">
+						<col class="gvis-col-image">
+						<col class="gvis-col-text">
+						<col class="gvis-col-text">
+						<col class="gvis-col-mismatch">
+						<col class="gvis-col-action">
+					</colgroup>
 					<thead>
 						<tr>
 							<th>محتوا</th>
@@ -819,16 +863,30 @@ function gv_imgsync_render_admin_page() {
 					<?php foreach ( $results as $row ) : ?>
 						<tr>
 							<td>
-								<a href="<?php echo esc_url( $row['post_edit_link'] ); ?>" target="_blank"><?php echo esc_html( $row['post_title'] ); ?></a><br>
+								<a href="<?php echo esc_url( $row['post_edit_link'] ); ?>" target="_blank" class="gvis-ellipsis" title="<?php echo esc_attr( $row['post_title'] ); ?>"><?php echo esc_html( gv_imgsync_shorten( $row['post_title'], 26 ) ); ?></a><br>
 								<span class="gvis-muted"><?php echo esc_html( $row['post_type'] ); ?> · <a href="<?php echo esc_url( $row['post_view_link'] ); ?>" target="_blank">مشاهده</a></span>
 							</td>
-							<td><?php echo esc_html( $row['author_name'] ); ?></td>
+							<td><span class="gvis-ellipsis" title="<?php echo esc_attr( $row['author_name'] ); ?>"><?php echo esc_html( gv_imgsync_shorten( $row['author_name'], 14 ) ); ?></span></td>
 							<td>
-								<?php echo wp_get_attachment_image( $row['image_id'], array( 44, 44 ) ); ?><br>
-								<a href="<?php echo esc_url( $row['image_edit_link'] ); ?>" target="_blank" class="gvis-muted"><?php echo esc_html( $row['image_file'] ); ?></a>
+								<div class="gvis-thumb-wrap">
+									<?php echo wp_get_attachment_image( $row['image_id'], array( 44, 44 ), false, array( 'class' => 'gvis-thumb' ) ); ?>
+									<a href="<?php echo esc_url( $row['image_edit_link'] ); ?>" target="_blank" class="gvis-muted gvis-ellipsis" title="<?php echo esc_attr( $row['image_file'] ); ?>"><?php echo esc_html( gv_imgsync_shorten( $row['image_file'], 20 ) ); ?></a>
+								</div>
 							</td>
-							<td><?php echo esc_html( $row['image_title'] ?: '—' ); ?></td>
-							<td><?php echo esc_html( $row['image_alt'] ?: '—' ); ?></td>
+							<td>
+								<?php if ( $row['image_title'] ) : ?>
+									<span class="gvis-ellipsis" title="<?php echo esc_attr( $row['image_title'] ); ?>"><?php echo esc_html( gv_imgsync_shorten( $row['image_title'], 24 ) ); ?></span>
+								<?php else : ?>
+									<span class="gvis-muted">—</span>
+								<?php endif; ?>
+							</td>
+							<td>
+								<?php if ( $row['image_alt'] ) : ?>
+									<span class="gvis-ellipsis" title="<?php echo esc_attr( $row['image_alt'] ); ?>"><?php echo esc_html( gv_imgsync_shorten( $row['image_alt'], 24 ) ); ?></span>
+								<?php else : ?>
+									<span class="gvis-muted">—</span>
+								<?php endif; ?>
+							</td>
 							<td>
 								<?php if ( $row['title_mismatch'] ) : ?><span class="gvis-tag gvis-tag-title">عنوان</span><?php endif; ?>
 								<?php if ( $row['alt_mismatch'] ) : ?><span class="gvis-tag gvis-tag-alt">آلت</span><?php endif; ?>
@@ -846,6 +904,7 @@ function gv_imgsync_render_admin_page() {
 					<?php endforeach; ?>
 					</tbody>
 				</table>
+				</div>
 			<?php endif; ?>
 		</div>
 

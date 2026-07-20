@@ -230,6 +230,16 @@ function gv_hub_get_items() {
 			'status_key'    => null,
 		),
 		array(
+			'title'         => 'گزارش عملکرد سئوی مشتری',
+			'desc'          => 'ثبت گزارش دوره‌ای کار سئو (تغییر رتبه کلمات، محتوای تولیدشده، رشد صفحات، ساعت کار) و نمایش آن با نمودار در پنل اختصاصی مشتری از طریق شورت‌کد [gv_seo_reports].',
+			'icon'          => '📑',
+			'page'          => GV_SR_PAGE_SLUG,
+			'color'         => '#065f46',
+			'category'      => 'seo',
+			'status_option' => null,
+			'status_key'    => null,
+		),
+		array(
 			'title'         => 'آمار بازدید و رفتار کاربران',
 			'desc'          => 'ثبت بازدید هر صفحه، مدت‌زمان حضور، مسیر حرکت بین صفحات و کلیک‌های کاربران به‌همراه داشبورد آماری.',
 			'icon'          => '📈',
@@ -285,6 +295,56 @@ function gv_hub_get_item_status( $item ) {
 	}
 
 	return null;
+}
+
+/* ==========================================================
+   ۳.۵) فعال/غیرفعال‌سازی سریع از روی کارت داشبورد (AJAX)
+   ========================================================== */
+add_action( 'wp_ajax_gv_hub_toggle_status', 'gv_hub_ajax_toggle_status' );
+function gv_hub_ajax_toggle_status() {
+
+	if ( ! current_user_can( 'manage_options' ) ) {
+		wp_send_json_error( array( 'message' => 'دسترسی غیرمجاز است.' ), 403 );
+	}
+
+	check_ajax_referer( 'gv_hub_toggle_nonce', 'nonce' );
+
+	$page      = isset( $_POST['page'] ) ? sanitize_text_field( wp_unslash( $_POST['page'] ) ) : '';
+	$new_state = isset( $_POST['state'] ) && '1' === $_POST['state'];
+
+	if ( '' === $page ) {
+		wp_send_json_error( array( 'message' => 'افزونه مشخص نشده است.' ), 400 );
+	}
+
+	// فقط آیتم‌هایی که واقعاً در لیست هاب تعریف شده‌اند قابل تغییرند
+	// (جلوگیری از تغییر آپشن‌های دلخواه/غیرمرتبط).
+	$target = null;
+	foreach ( gv_hub_get_items() as $item ) {
+		if ( isset( $item['page'] ) && $item['page'] === $page ) {
+			$target = $item;
+			break;
+		}
+	}
+
+	if ( ! $target || empty( $target['status_option'] ) ) {
+		wp_send_json_error( array( 'message' => 'این افزونه قابلیت فعال/غیرفعال‌سازی از این بخش را ندارد.' ), 404 );
+	}
+
+	$option_name = $target['status_option'];
+	$status_key  = $target['status_key'];
+
+	if ( null === $status_key ) {
+		update_option( $option_name, $new_state ? 1 : 0 );
+	} else {
+		$current = get_option( $option_name, array() );
+		if ( ! is_array( $current ) ) {
+			$current = array();
+		}
+		$current[ $status_key ] = $new_state ? 1 : 0;
+		update_option( $option_name, $current );
+	}
+
+	wp_send_json_success( array( 'state' => $new_state ) );
 }
 
 /* ==========================================================
@@ -391,12 +451,20 @@ function gv_hub_render_page() {
 							   style="--gv-card-color: <?php echo esc_attr( $item['color'] ); ?>;">
 								<div class="gv-hub-card-top">
 									<div class="gv-hub-card-icon"><?php echo esc_html( $item['icon'] ); ?></div>
-									<?php if ( true === $status ) : ?>
-										<span class="gv-hub-status gv-hub-status-on"><i></i> فعال</span>
-									<?php elseif ( false === $status ) : ?>
-										<span class="gv-hub-status gv-hub-status-off"><i></i> غیرفعال</span>
-									<?php elseif ( null !== $item['status_option'] ) : ?>
-										<span class="gv-hub-status gv-hub-status-new"><i></i> تنظیم‌نشده</span>
+									<?php if ( null !== $item['status_option'] ) : ?>
+										<div class="gv-hub-card-switch" onclick="event.stopPropagation();">
+											<span class="gv-hub-status-text <?php echo true === $status ? 'is-on' : 'is-off'; ?>">
+												<?php echo true === $status ? 'فعال' : ( false === $status ? 'غیرفعال' : 'تنظیم‌نشده' ); ?>
+											</span>
+											<label class="gv-hub-toggle" title="فعال/غیرفعال کردن این ابزار">
+												<input type="checkbox"
+													class="gv-hub-toggle-input"
+													data-page="<?php echo esc_attr( $item['page'] ); ?>"
+													onchange="gvHubToggleStatus(this)"
+													<?php checked( true === $status ); ?>>
+												<span class="gv-hub-toggle-track"><span class="gv-hub-toggle-thumb"></span></span>
+											</label>
+										</div>
 									<?php endif; ?>
 								</div>
 								<h3><?php echo esc_html( $item['title'] ); ?></h3>
@@ -622,16 +690,21 @@ function gv_hub_render_page() {
 		.gv-hub-card-btn svg{transform:rotate(180deg);transition:transform .16s ease;}
 		.gv-hub-card:hover .gv-hub-card-btn svg{transform:rotate(180deg) translateX(3px);}
 
-		.gv-hub-status{display:inline-flex;align-items:center;gap:5px;font-size:10.5px;font-weight:700;padding:3px 9px;border-radius:20px;}
-		.gv-hub-status i{width:6px;height:6px;border-radius:50%;display:inline-block;}
-		.gv-hub-status-on{background:rgba(34,197,94,.14);color:#1b9c56;}
-		.gv-hub-status-on i{background:#22c55e;}
-		.gv-hub-status-off{background:rgba(148,163,184,.18);color:var(--gv-text-muted);}
-		.gv-hub-status-off i{background:#94a3b8;}
-		.gv-hub-status-new{background:rgba(250,204,21,.16);color:#a16207;}
-		.gv-hub-status-new i{background:#facc15;}
-		.gv-hub-wrap[data-theme="dark"] .gv-hub-status-on{color:#5EE897;}
-		.gv-hub-wrap[data-theme="dark"] .gv-hub-status-new{color:#F3CD68;}
+		.gv-hub-card-switch{display:flex;align-items:center;gap:7px;}
+		.gv-hub-status-text{font-size:10.5px;font-weight:700;color:var(--gv-text-muted);white-space:nowrap;}
+		.gv-hub-status-text.is-on{color:#1b9c56;}
+		.gv-hub-wrap[data-theme="dark"] .gv-hub-status-text.is-on{color:#5EE897;}
+
+		.gv-hub-toggle{position:relative;display:inline-block;width:34px;height:19px;flex-shrink:0;cursor:pointer;}
+		.gv-hub-toggle input{position:absolute;inset:0;opacity:0;margin:0;cursor:pointer;z-index:2;}
+		.gv-hub-toggle-track{position:absolute;inset:0;background:#cbd5e1;border-radius:20px;transition:background .18s ease;}
+		.gv-hub-toggle-thumb{position:absolute;top:2px;inset-inline-start:2px;width:15px;height:15px;background:#fff;border-radius:50%;box-shadow:0 1px 2px rgba(0,0,0,.25);transition:inset-inline-start .18s ease;}
+		.gv-hub-toggle input:checked ~ .gv-hub-toggle-track{background:#22c55e;}
+		.gv-hub-toggle input:checked ~ .gv-hub-toggle-track .gv-hub-toggle-thumb{inset-inline-start:17px;}
+		.gv-hub-toggle input:focus-visible ~ .gv-hub-toggle-track{box-shadow:0 0 0 2px rgba(34,197,94,.35);}
+		.gv-hub-toggle input:disabled{cursor:wait;}
+		.gv-hub-toggle input:disabled ~ .gv-hub-toggle-track{opacity:.55;}
+		.gv-hub-card.gv-hub-card-busy{opacity:.65;pointer-events:none;}
 
 		.gv-hub-card[hidden]{display:none;}
 		.gv-hub-section[hidden]{display:none;}
@@ -666,6 +739,63 @@ function gv_hub_render_page() {
 	</style>
 
 	<script>
+	var GV_HUB_AJAX = {
+		url:   <?php echo wp_json_encode( admin_url( 'admin-ajax.php' ) ); ?>,
+		nonce: <?php echo wp_json_encode( wp_create_nonce( 'gv_hub_toggle_nonce' ) ); ?>
+	};
+
+	function gvHubToggleStatus( input ) {
+		var page     = input.getAttribute( 'data-page' );
+		var newState = input.checked;
+		var card     = input.closest( '.gv-hub-card' );
+		var label    = card ? card.querySelector( '.gv-hub-status-text' ) : null;
+
+		input.disabled = true;
+		if ( card ) { card.classList.add( 'gv-hub-card-busy' ); }
+
+		var body = new URLSearchParams();
+		body.append( 'action', 'gv_hub_toggle_status' );
+		body.append( 'nonce', GV_HUB_AJAX.nonce );
+		body.append( 'page', page || '' );
+		body.append( 'state', newState ? '1' : '0' );
+
+		fetch( GV_HUB_AJAX.url, {
+			method: 'POST',
+			credentials: 'same-origin',
+			headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+			body: body.toString()
+		} )
+		.then( function( res ) { return res.json(); } )
+		.then( function( json ) {
+			input.disabled = false;
+			if ( card ) { card.classList.remove( 'gv-hub-card-busy' ); }
+
+			if ( ! json || ! json.success ) {
+				input.checked = ! newState;
+				window.alert( ( json && json.data && json.data.message ) ? json.data.message : 'خطا در تغییر وضعیت. دوباره تلاش کنید.' );
+				return;
+			}
+
+			if ( label ) {
+				label.textContent = newState ? 'فعال' : 'غیرفعال';
+				label.classList.toggle( 'is-on', newState );
+			}
+
+			var activeBadge = document.querySelector( '.gv-hub-badge-active' );
+			if ( activeBadge ) {
+				var current = parseInt( activeBadge.textContent, 10 ) || 0;
+				var next    = newState ? current + 1 : Math.max( 0, current - 1 );
+				activeBadge.textContent = next + ' فعال';
+			}
+		} )
+		.catch( function() {
+			input.disabled = false;
+			if ( card ) { card.classList.remove( 'gv-hub-card-busy' ); }
+			input.checked = ! newState;
+			window.alert( 'خطا در ارتباط با سرور. دوباره تلاش کنید.' );
+		} );
+	}
+
 	(function(){
 		var wrap = document.getElementById('gv-hub-wrap');
 		if (!wrap) return;
