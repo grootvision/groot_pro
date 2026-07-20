@@ -2698,6 +2698,8 @@ function gv_sr_render_customer_dashboard( $user_id ) {
 		<?php
 		$line_items = array();
 		foreach ( $traffic_trend as $t ) { $line_items[] = array( 'label' => $t['label'], 'value' => $t['after'] ); }
+		$line_items = array_reverse( $line_items );
+
 		echo gv_sr_svg_line_chart( $line_items, '#2563eb' ); // phpcs:ignore
 		?>
 	</div>
@@ -2717,6 +2719,7 @@ function gv_sr_render_customer_dashboard( $user_id ) {
 				if ( $h['rank'] <= 0 ) { continue; }
 				$line_items[] = array( 'label' => gv_sr_jalali_numeric( $h['date'] ), 'value' => $h['rank'] );
 			}
+			$line_items = array_reverse( $line_items );
 			if ( count( $line_items ) < 2 ) { continue; }
 			echo '<h4 style="font-size:12.5px;color:#334155;margin:16px 0 6px;">' . esc_html( $keyword ) . '</h4>';
 			echo gv_sr_svg_line_chart( $line_items, '#7c3aed', 640, 140, true ); // phpcs:ignore
