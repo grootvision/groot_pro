@@ -49,29 +49,39 @@ function gv_hub_register_menu() {
 function gv_hub_get_categories() {
 	return array(
 		'marketing' => array(
-			'label' => 'بازاریابی و تبدیل مشتری',
-			'sub'   => 'ابزارهایی برای جلب توجه و افزایش نرخ خرید',
+			'label' => 'افزایش فروش',
+			'tag'   => 'فروش',
+			'sub'   => 'جلب توجه بازدیدکننده و افزایش نرخ خرید',
 			'icon'  => '🎯',
+			'color' => '#9f1239',
 		),
 		'design' => array(
-			'label' => 'طراحی و تجربه کاربری',
+			'label' => 'استایل و ظاهر',
+			'tag'   => 'استایل',
 			'sub'   => 'ظاهر، فونت و حس‌وحال بصری سایت',
 			'icon'  => '🎨',
+			'color' => '#7c3aed',
 		),
 		'security' => array(
-			'label' => 'امنیت و عملکرد',
-			'sub'   => 'محافظت، سرعت و پایداری سایت',
+			'label' => 'فنی، امنیت و سرعت',
+			'tag'   => 'فنی',
+			'sub'   => 'محافظت، سرعت و پایداری زیرساخت سایت',
 			'icon'  => '🛡️',
+			'color' => '#2563eb',
 		),
 		'seo' => array(
 			'label' => 'سئو و محتوا',
-			'sub'   => 'تولید و مدیریت محتوای هدفمند',
+			'tag'   => 'سئو',
+			'sub'   => 'تولید و مدیریت محتوای هدفمند برای رتبه گوگل',
 			'icon'  => '🔍',
+			'color' => '#16a34a',
 		),
 		'manage' => array(
-			'label' => 'مدیریت، آمار و پشتیبانی',
-			'sub'   => 'کنترل، رصد و پشتیبانی از پشت‌صحنه',
+			'label' => 'مدیریت و پشتیبانی',
+			'tag'   => 'مدیریت',
+			'sub'   => 'کنترل، رصد آمار و پشتیبانی از پشت‌صحنه',
 			'icon'  => '📊',
+			'color' => '#0e4037',
 		),
 	);
 }
@@ -417,9 +427,19 @@ function gv_hub_render_page() {
 						</button>
 					<?php endforeach; ?>
 				</div>
-				<div class="gv-hub-search">
-					<svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true"><circle cx="11" cy="11" r="7" stroke="currentColor" stroke-width="1.8" fill="none"/><path d="m20 20-3.2-3.2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
-					<input type="text" id="gv-hub-search-input" placeholder="جستجوی افزونه…" autocomplete="off">
+				<div class="gv-hub-toolbar-left">
+					<div class="gv-hub-sort">
+						<svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><path d="M6 8h12M9 12h6M11 16h2" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round"/></svg>
+						<select id="gv-hub-sort-select" aria-label="مرتب‌سازی افزونه‌ها">
+							<option value="default">مرتب‌سازی: پیش‌فرض</option>
+							<option value="name-asc">نام (الف تا ی)</option>
+							<option value="status">فعال‌ها اول</option>
+						</select>
+					</div>
+					<div class="gv-hub-search">
+						<svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true"><circle cx="11" cy="11" r="7" stroke="currentColor" stroke-width="1.8" fill="none"/><path d="m20 20-3.2-3.2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+						<input type="text" id="gv-hub-search-input" placeholder="جستجوی افزونه…" autocomplete="off">
+					</div>
 				</div>
 			</div>
 		</div>
@@ -443,14 +463,30 @@ function gv_hub_render_page() {
 							$url    = admin_url( 'admin.php?page=' . $item['page'] );
 							$status = gv_hub_get_item_status( $item );
 							$search_blob = esc_attr( gv_hub_strip_for_search( $item['title'] . ' ' . $item['desc'] ) );
+							$status_rank = true === $status ? 0 : ( false === $status ? 1 : 2 );
 							?>
 							<a href="<?php echo esc_url( $url ); ?>"
 							   class="gv-hub-card"
 							   data-category="<?php echo esc_attr( $cat_key ); ?>"
 							   data-search="<?php echo $search_blob; ?>"
+							   data-name="<?php echo esc_attr( gv_hub_strip_for_search( $item['title'] ) ); ?>"
+							   data-status-rank="<?php echo esc_attr( $status_rank ); ?>"
 							   style="--gv-card-color: <?php echo esc_attr( $item['color'] ); ?>;">
 								<div class="gv-hub-card-top">
 									<div class="gv-hub-card-icon"><?php echo esc_html( $item['icon'] ); ?></div>
+									<span class="gv-hub-card-tag" style="--gv-tag-color: <?php echo esc_attr( $cat['color'] ); ?>;"><?php echo esc_html( $cat['tag'] ); ?></span>
+									<?php if ( true === $status ) : ?>
+										<span class="gv-hub-dot gv-hub-dot-on" title="فعال" aria-hidden="true"></span>
+									<?php elseif ( false === $status ) : ?>
+										<span class="gv-hub-dot gv-hub-dot-off" title="غیرفعال" aria-hidden="true"></span>
+									<?php endif; ?>
+								</div>
+								<h3><?php echo esc_html( $item['title'] ); ?></h3>
+								<p><?php echo esc_html( $item['desc'] ); ?></p>
+								<div class="gv-hub-card-bottom">
+									<span class="gv-hub-card-btn">تنظیمات
+										<svg viewBox="0 0 24 24" width="12" height="12"><path d="M15 6 9 12l6 6" stroke="currentColor" stroke-width="2.4" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
+									</span>
 									<?php if ( null !== $item['status_option'] ) : ?>
 										<div class="gv-hub-card-switch" onclick="event.stopPropagation();">
 											<span class="gv-hub-status-text <?php echo true === $status ? 'is-on' : 'is-off'; ?>">
@@ -467,11 +503,6 @@ function gv_hub_render_page() {
 										</div>
 									<?php endif; ?>
 								</div>
-								<h3><?php echo esc_html( $item['title'] ); ?></h3>
-								<p><?php echo esc_html( $item['desc'] ); ?></p>
-								<span class="gv-hub-card-btn">ورود به تنظیمات
-									<svg viewBox="0 0 24 24" width="13" height="13"><path d="M15 6 9 12l6 6" stroke="currentColor" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
-								</span>
 							</a>
 						<?php endforeach; ?>
 					</div>
@@ -635,10 +666,21 @@ function gv_hub_render_page() {
 		.gv-hub-filter.is-active{background:#8CE9C1;border-color:#8CE9C1;color:#0b2019;}
 		.gv-hub-filter.is-active b{background:rgba(11,32,25,.15);}
 
+		.gv-hub-toolbar-left{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-inline-start:auto;}
+
+		.gv-hub-sort{
+			display:flex;align-items:center;gap:6px;background:rgba(255,255,255,.08);
+			border:1px solid rgba(255,255,255,.16);border-radius:20px;padding:7px 12px;color:rgba(239,247,241,.75);
+		}
+		.gv-hub-sort select{
+			background:transparent;border:0;outline:0;color:#fff;font-family:inherit;font-size:12px;cursor:pointer;
+		}
+		.gv-hub-sort select option{color:#0b2019;}
+
 		.gv-hub-search{
 			display:flex;align-items:center;gap:8px;background:rgba(255,255,255,.08);
 			border:1px solid rgba(255,255,255,.16);border-radius:20px;padding:7px 14px;color:rgba(239,247,241,.65);
-			min-width:200px;
+			min-width:180px;
 		}
 		.gv-hub-search input{
 			background:transparent;border:0;outline:0;color:#fff;font-family:inherit;font-size:12.5px;width:100%;
@@ -662,45 +704,58 @@ function gv_hub_render_page() {
 		.gv-hub-empty{text-align:center;color:var(--gv-text-muted);font-size:13px;padding:40px 0;}
 
 		/* ---------- گرید کارت‌ها ---------- */
-		.gv-hub-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;}
-		@media(max-width:980px){.gv-hub-grid{grid-template-columns:repeat(2,1fr);}}
-		@media(max-width:640px){.gv-hub-grid{grid-template-columns:1fr;}}
+		.gv-hub-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;}
+		@media(max-width:1100px){.gv-hub-grid{grid-template-columns:repeat(3,1fr);}}
+		@media(max-width:760px){.gv-hub-grid{grid-template-columns:repeat(2,1fr);}}
+		@media(max-width:480px){.gv-hub-grid{grid-template-columns:1fr;}}
 
 		.gv-hub-card{
 			display:flex;flex-direction:column;background:var(--gv-surface);border:1px solid var(--gv-border);
-			border-radius:var(--gv-radius-md);padding:18px 18px 16px;text-decoration:none;color:inherit;
+			border-radius:var(--gv-radius-sm);padding:13px 13px 11px;text-decoration:none;color:inherit;
 			box-shadow:var(--gv-shadow);transition:transform .16s ease,box-shadow .16s ease,border-color .16s ease;
 			position:relative;
 		}
 		.gv-hub-card::before{
-			content:"";position:absolute;inset-inline-start:0;top:14px;bottom:14px;width:3px;border-radius:4px;
+			content:"";position:absolute;inset-inline-start:0;top:11px;bottom:11px;width:3px;border-radius:4px;
 			background:var(--gv-card-color);opacity:.85;
 		}
 		.gv-hub-card:hover{transform:translateY(-3px);box-shadow:var(--gv-shadow-lg);border-color:var(--gv-card-color);color:inherit;}
-		.gv-hub-card-top{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:10px;}
+		.gv-hub-card-top{display:flex;align-items:center;gap:6px;margin-bottom:8px;}
 		.gv-hub-card-icon{
-			font-size:20px;width:36px;height:36px;border-radius:10px;display:flex;align-items:center;justify-content:center;
+			font-size:16px;width:30px;height:30px;border-radius:9px;display:flex;align-items:center;justify-content:center;flex-shrink:0;
 			background:color-mix(in srgb, var(--gv-card-color) 14%, transparent);
 		}
-		.gv-hub-card h3{font-size:14.5px;margin:0 0 6px;color:var(--gv-text);font-weight:700;}
-		.gv-hub-card p{font-size:12.2px;color:var(--gv-text-muted);line-height:1.85;margin:0 0 14px;}
+		.gv-hub-card-tag{
+			font-size:10px;font-weight:700;color:var(--gv-tag-color);background:color-mix(in srgb, var(--gv-tag-color) 12%, transparent);
+			border:1px solid color-mix(in srgb, var(--gv-tag-color) 35%, transparent);
+			border-radius:20px;padding:2px 8px;white-space:nowrap;
+		}
+		.gv-hub-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0;margin-inline-start:auto;}
+		.gv-hub-dot-on{background:#22c55e;box-shadow:0 0 0 3px rgba(34,197,94,.18);}
+		.gv-hub-dot-off{background:#cbd5e1;}
+		.gv-hub-wrap[data-theme="dark"] .gv-hub-dot-off{background:#3a473e;}
+
+		.gv-hub-card h3{font-size:13px;margin:0 0 4px;color:var(--gv-text);font-weight:700;line-height:1.5;}
+		.gv-hub-card p{font-size:11.3px;color:var(--gv-text-muted);line-height:1.75;margin:0 0 10px;
+			display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;}
+		.gv-hub-card-bottom{display:flex;align-items:center;justify-content:space-between;gap:6px;margin-top:auto;padding-top:8px;border-top:1px dashed var(--gv-border);}
 		.gv-hub-card-btn{
-			display:inline-flex;align-items:center;gap:5px;font-size:12px;font-weight:700;color:var(--gv-card-color);margin-top:auto;
+			display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:700;color:var(--gv-card-color);
 		}
 		.gv-hub-card-btn svg{transform:rotate(180deg);transition:transform .16s ease;}
 		.gv-hub-card:hover .gv-hub-card-btn svg{transform:rotate(180deg) translateX(3px);}
 
-		.gv-hub-card-switch{display:flex;align-items:center;gap:7px;}
-		.gv-hub-status-text{font-size:10.5px;font-weight:700;color:var(--gv-text-muted);white-space:nowrap;}
+		.gv-hub-card-switch{display:flex;align-items:center;gap:5px;}
+		.gv-hub-status-text{font-size:9.5px;font-weight:700;color:var(--gv-text-muted);white-space:nowrap;}
 		.gv-hub-status-text.is-on{color:#1b9c56;}
 		.gv-hub-wrap[data-theme="dark"] .gv-hub-status-text.is-on{color:#5EE897;}
 
-		.gv-hub-toggle{position:relative;display:inline-block;width:34px;height:19px;flex-shrink:0;cursor:pointer;}
+		.gv-hub-toggle{position:relative;display:inline-block;width:30px;height:17px;flex-shrink:0;cursor:pointer;}
 		.gv-hub-toggle input{position:absolute;inset:0;opacity:0;margin:0;cursor:pointer;z-index:2;}
 		.gv-hub-toggle-track{position:absolute;inset:0;background:#cbd5e1;border-radius:20px;transition:background .18s ease;}
-		.gv-hub-toggle-thumb{position:absolute;top:2px;inset-inline-start:2px;width:15px;height:15px;background:#fff;border-radius:50%;box-shadow:0 1px 2px rgba(0,0,0,.25);transition:inset-inline-start .18s ease;}
+		.gv-hub-toggle-thumb{position:absolute;top:2px;inset-inline-start:2px;width:13px;height:13px;background:#fff;border-radius:50%;box-shadow:0 1px 2px rgba(0,0,0,.25);transition:inset-inline-start .18s ease;}
 		.gv-hub-toggle input:checked ~ .gv-hub-toggle-track{background:#22c55e;}
-		.gv-hub-toggle input:checked ~ .gv-hub-toggle-track .gv-hub-toggle-thumb{inset-inline-start:17px;}
+		.gv-hub-toggle input:checked ~ .gv-hub-toggle-track .gv-hub-toggle-thumb{inset-inline-start:15px;}
 		.gv-hub-toggle input:focus-visible ~ .gv-hub-toggle-track{box-shadow:0 0 0 2px rgba(34,197,94,.35);}
 		.gv-hub-toggle input:disabled{cursor:wait;}
 		.gv-hub-toggle input:disabled ~ .gv-hub-toggle-track{opacity:.55;}
@@ -732,6 +787,8 @@ function gv_hub_render_page() {
 			.gv-hub-promo-contacts{justify-content:center;}
 			.gv-hub-promo-cta{text-align:center;}
 			.gv-hub-toolbar{flex-direction:column;align-items:stretch;}
+			.gv-hub-toolbar-left{margin-inline-start:0;width:100%;}
+			.gv-hub-sort,.gv-hub-search{flex:1;min-width:0;}
 			.gv-hub-search{min-width:0;}
 		}
 
@@ -818,12 +875,36 @@ function gv_hub_render_page() {
 			});
 		}
 
-		/* ---- فیلتر دسته‌بندی + جستجو ---- */
+		/* ---- فیلتر دسته‌بندی + جستجو + مرتب‌سازی ---- */
 		var filterButtons = Array.prototype.slice.call(document.querySelectorAll('#gv-hub-filters .gv-hub-filter'));
 		var sections       = Array.prototype.slice.call(document.querySelectorAll('.gv-hub-section'));
 		var searchInput    = document.getElementById('gv-hub-search-input');
+		var sortSelect     = document.getElementById('gv-hub-sort-select');
 		var emptyState     = document.getElementById('gv-hub-empty');
 		var activeFilter   = 'all';
+
+		function applySort(){
+			var sortBy = sortSelect ? sortSelect.value : 'default';
+			if (sortBy === 'default') return;
+
+			sections.forEach(function(section){
+				var grid  = section.querySelector('.gv-hub-grid');
+				if (!grid) return;
+				var cards = Array.prototype.slice.call(grid.querySelectorAll('.gv-hub-card'));
+
+				cards.sort(function(a, b){
+					if (sortBy === 'name-asc') {
+						return (a.getAttribute('data-name') || '').localeCompare(b.getAttribute('data-name') || '', 'fa');
+					}
+					if (sortBy === 'status') {
+						return (parseInt(a.getAttribute('data-status-rank'), 10) || 0) - (parseInt(b.getAttribute('data-status-rank'), 10) || 0);
+					}
+					return 0;
+				});
+
+				cards.forEach(function(card){ grid.appendChild(card); });
+			});
+		}
 
 		function applyFilters(){
 			var term = (searchInput && searchInput.value ? searchInput.value : '').trim().toLowerCase();
@@ -863,6 +944,10 @@ function gv_hub_render_page() {
 
 		if (searchInput) {
 			searchInput.addEventListener('input', applyFilters);
+		}
+
+		if (sortSelect) {
+			sortSelect.addEventListener('change', applySort);
 		}
 	})();
 	</script>
