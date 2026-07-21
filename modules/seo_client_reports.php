@@ -1631,6 +1631,167 @@ function gv_sr_handle_export_team_timesheet() {
 /* ==========================================================================
    ۸) صفحه مدیریت — روتر تب‌ها
    ========================================================================== */
+/* ==========================================================================
+   ۷.۵) نوار سراسری بالای صفحه — شناسایی کارمند + تایمر زنده (در همه‌ی تب‌ها)
+   ========================================================================== */
+function gv_sr_render_top_bar() {
+	$emp = gv_sr_current_employee();
+
+	if ( ! $emp ) {
+		$employees = gv_sr_get_employees( true );
+		?>
+		<div class="gvsr-topbar">
+			<div class="gvsr-topbar-row">
+				<span class="gvsr-topbar-idle">👋 برای ثبت کارکرد و استفاده از تایمر، اول مشخص کنید چه کسی هستید:</span>
+				<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" class="gvsr-topbar-form">
+					<?php wp_nonce_field( GV_SR_NONCE ); ?>
+					<input type="hidden" name="action" value="gv_sr_set_employee">
+					<select name="existing_employee_id" class="gvsr-select" style="min-width:150px;">
+						<option value="0">— انتخاب از لیست —</option>
+						<?php foreach ( $employees as $e ) : ?>
+							<option value="<?php echo esc_attr( $e->id ); ?>"><?php echo esc_html( $e->name ); ?></option>
+						<?php endforeach; ?>
+					</select>
+					<span style="color:var(--gv-muted);font-size:11.5px;">یا</span>
+					<input type="text" name="new_employee_name" placeholder="نام کارمند جدید...">
+					<button type="submit" class="gvsr-topbar-btn-start">تایید</button>
+				</form>
+			</div>
+		</div>
+		<?php
+		return;
+	}
+
+	$active_timer = gv_sr_get_active_timer( $emp->id );
+	$employees    = gv_sr_get_employees( true );
+	?>
+	<div class="gvsr-topbar">
+		<div class="gvsr-topbar-row">
+			<span class="gvsr-topbar-name<?php echo $active_timer ? ' running' : ''; ?>"><span class="dot"></span><?php echo esc_html( $emp->name ); ?></span>
+
+			<?php if ( $active_timer ) : ?>
+				<span class="gvsr-topbar-clock" id="gvsr-timer-display" data-started="<?php echo esc_attr( str_replace( ' ', 'T', $active_timer->started_at ) ); ?>">۰۰:۰۰:۰۰</span>
+				<?php if ( $active_timer->client_name ) : ?>
+					<span class="gvsr-hint-inline">روی: <b style="color:var(--gv-ink);"><?php echo esc_html( $active_timer->client_name ); ?></b></span>
+				<?php endif; ?>
+				<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" id="gvsr-stop-timer-form" style="margin-inline-start:auto;">
+					<?php wp_nonce_field( GV_SR_NONCE ); ?>
+					<input type="hidden" name="action" value="gv_sr_stop_timer">
+					<button type="submit" class="gvsr-topbar-btn-stop" onclick="return confirm('تایمر متوقف شود و کارکرد این مدت ثبت شود؟');">⏹ توقف تایمر</button>
+				</form>
+			<?php else : ?>
+				<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" class="gvsr-topbar-form" style="margin-inline-start:auto;">
+					<?php wp_nonce_field( GV_SR_NONCE ); ?>
+					<input type="hidden" name="action" value="gv_sr_start_timer">
+					<input type="text" name="timer_client_name" list="gvsr-client-datalist" placeholder="روی چه کاری کار می‌کنید؟ (اختیاری)">
+					<button type="submit" class="gvsr-topbar-btn-start">▶ شروع تایمر</button>
+				</form>
+			<?php endif; ?>
+
+			<details class="gvsr-topbar-switch">
+				<summary>تغییر کارمند</summary>
+				<div class="gvsr-topbar-switch-panel">
+					<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>">
+						<?php wp_nonce_field( GV_SR_NONCE ); ?>
+						<input type="hidden" name="action" value="gv_sr_set_employee">
+						<label style="display:block;font-size:11.8px;font-weight:700;color:var(--gv-ink-soft);margin-bottom:8px;">من یکی از این افرادم:
+							<select name="existing_employee_id" class="gvsr-select" style="width:100%;margin-top:6px;">
+								<option value="0">— انتخاب کنید —</option>
+								<?php foreach ( $employees as $e ) : ?>
+									<option value="<?php echo esc_attr( $e->id ); ?>" <?php selected( (int) $emp->id === (int) $e->id ); ?>><?php echo esc_html( $e->name ); ?></option>
+								<?php endforeach; ?>
+							</select>
+						</label>
+						<label style="display:block;font-size:11.8px;font-weight:700;color:var(--gv-ink-soft);margin-bottom:10px;">یا کارمند جدید:
+							<input type="text" name="new_employee_name" placeholder="نام..." style="width:100%;margin-top:6px;padding:8px 10px;border:1px solid var(--gv-border);border-radius:8px;">
+						</label>
+						<button type="submit" class="gvsr-topbar-btn-start" style="width:100%;justify-content:center;">تایید</button>
+					</form>
+				</div>
+			</details>
+		</div>
+	</div>
+
+	<!-- مودال هشدار خروج، فقط وقتی تایمر فعال است و کاربر داخل همین پیشخوان روی لینکی کلیک می‌کند -->
+	<div id="gvsr-timer-leave-modal" class="gvsr-timer-modal" style="display:none;">
+		<div class="gvsr-timer-modal-box">
+			<p>⏱️ تایمر کارکرد شما هنوز در حال اجراست. قبل از رفتن چه کار کنیم؟</p>
+			<div class="gvsr-timer-modal-actions">
+				<button type="button" class="gvsr-btn-export" id="gvsr-timer-stop-and-go">⏹ متوقف کن و برو</button>
+				<button type="button" class="gvsr-btn-ghost" id="gvsr-timer-continue-and-go">▶️ ادامه بده و فقط برو</button>
+				<button type="button" class="gvsr-btn-ghost" id="gvsr-timer-cancel-nav">انصراف (همین‌جا بمانم)</button>
+			</div>
+		</div>
+	</div>
+
+	<script>
+	document.addEventListener('DOMContentLoaded', function () {
+		var display = document.getElementById('gvsr-timer-display');
+		var timerActive = !!display;
+
+		if (display) {
+			var startedAt = new Date(display.getAttribute('data-started'));
+			function faDigits(str) {
+				var map = ['۰','۱','۲','۳','۴','۵','۶','۷','۸','۹'];
+				return String(str).replace(/[0-9]/g, function (d) { return map[d]; });
+			}
+			function pad(n) { return (n < 10 ? '0' : '') + n; }
+			function tick() {
+				var diffSec = Math.max(0, Math.floor((Date.now() - startedAt.getTime()) / 1000));
+				var h = Math.floor(diffSec / 3600);
+				var m = Math.floor((diffSec % 3600) / 60);
+				var s = diffSec % 60;
+				display.textContent = faDigits(pad(h) + ':' + pad(m) + ':' + pad(s));
+			}
+			tick();
+			setInterval(tick, 1000);
+		}
+
+		window.addEventListener('beforeunload', function (e) {
+			if (!timerActive) { return; }
+			e.preventDefault();
+			e.returnValue = 'تایمر کارکرد شما در حال اجراست.';
+		});
+
+		var modal = document.getElementById('gvsr-timer-leave-modal');
+		var pendingUrl = null;
+
+		if (timerActive && modal) {
+			document.addEventListener('click', function (e) {
+				var link = e.target.closest('a[href]');
+				if (!link) { return; }
+				if (link.target === '_blank' || link.href.indexOf('javascript:') === 0) { return; }
+				e.preventDefault();
+				pendingUrl = link.href;
+				modal.style.display = 'flex';
+			});
+
+			var cancelBtn = document.getElementById('gvsr-timer-cancel-nav');
+			var continueBtn = document.getElementById('gvsr-timer-continue-and-go');
+			var stopBtn = document.getElementById('gvsr-timer-stop-and-go');
+
+			if ( cancelBtn ) { cancelBtn.addEventListener('click', function () { modal.style.display = 'none'; pendingUrl = null; } ); }
+			if ( continueBtn ) { continueBtn.addEventListener('click', function () {
+				var url = pendingUrl;
+				modal.style.display = 'none';
+				if (url) { window.location.href = url; }
+			} ); }
+			if ( stopBtn ) { stopBtn.addEventListener('click', function () {
+				var url = pendingUrl;
+				modal.style.display = 'none';
+				timerActive = false;
+				var form = document.getElementById('gvsr-stop-timer-form');
+				var body = new URLSearchParams(new FormData(form));
+				fetch(form.action, { method: 'POST', credentials: 'same-origin', body: body })
+					.then(function () { if (url) { window.location.href = url; } })
+					.catch(function () { if (url) { window.location.href = url; } });
+			} ); }
+		}
+	});
+	</script>
+	<?php
+}
+
 function gv_sr_render_admin_page() {
 	if ( ! current_user_can( 'manage_options' ) ) { return; }
 	$tab = isset( $_GET['tab'] ) ? sanitize_key( $_GET['tab'] ) : 'list';
@@ -1638,6 +1799,8 @@ function gv_sr_render_admin_page() {
 
 	echo '<div class="wrap" dir="rtl" style="font-family: Tahoma, sans-serif;">';
 	gv_sr_admin_styles();
+
+	gv_sr_render_top_bar();
 
 	echo '<div class="gvsr-header">';
 	echo '<div><h1>📑 گزارش عملکرد سئو — Groot Vision</h1><span>گزارش دوره‌ای مشتری + مدیریت کارکرد و حقوق تیم سئو</span></div>';
@@ -2585,110 +2748,172 @@ function gv_sr_render_admin_form( $report ) {
 function gv_sr_admin_styles() {
 	?>
 	<style>
-		.gvsr-header{display:flex;align-items:center;justify-content:space-between;background:linear-gradient(120deg,#065f46,#10b981);color:#fff;padding:22px 26px;border-radius:14px;margin:20px 0;box-shadow:0 6px 20px rgba(0,0,0,.12);flex-wrap:wrap;gap:12px;}
-		.gvsr-header h1{margin:0;font-size:20px;color:#fff;}
-		.gvsr-header span{opacity:.9;font-size:12.5px;}
-		.gvsr-btn-export{background:#fff;color:#065f46;font-weight:800;padding:10px 20px;border-radius:10px;text-decoration:none;font-size:13px;white-space:nowrap;border:0;cursor:pointer;}
-		.gvsr-btn-ghost{background:rgba(255,255,255,.16);color:#fff;font-weight:700;padding:9px 16px;border-radius:10px;text-decoration:none;font-size:12.5px;white-space:nowrap;border:1px solid rgba(255,255,255,.35);cursor:pointer;}
-		.gvsr-notice{background:#dcfce7;color:#166534;border:1px solid #86efac;padding:10px 16px;border-radius:10px;font-size:13px;margin-bottom:16px;max-width:1100px;}
-		.gvsr-stat-cards{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:20px;max-width:1100px;}
+		:root{
+			--gv-ink:#0f172a; --gv-ink-soft:#475569; --gv-muted:#94a3b8;
+			--gv-bg:#f4f6f8; --gv-surface:#ffffff; --gv-border:#e6e9ee;
+			--gv-accent:#0f766e; --gv-accent-dark:#0b5a54; --gv-accent-soft:#e6f6f4;
+			--gv-green:#16a34a; --gv-green-soft:#e9f9ee;
+			--gv-red:#dc2626; --gv-red-soft:#fdeeee;
+			--gv-blue:#2563eb; --gv-blue-soft:#eef4ff;
+			--gv-amber:#b45309; --gv-amber-soft:#fef6e7;
+			--gv-radius-lg:16px; --gv-radius-md:12px; --gv-radius-sm:8px;
+			--gv-shadow:0 1px 2px rgba(15,23,42,.04), 0 6px 18px rgba(15,23,42,.06);
+			--gv-shadow-lift:0 10px 30px rgba(15,23,42,.10);
+		}
+		.wrap:has(.gvsr-topbar){background:var(--gv-bg);}
+		#wpbody-content .gvsr-report-card,
+		#wpbody-content .gvsr-box{ direction:rtl; }
+
+		/* ---------- عمومی ---------- */
+		.gvsr-header{display:flex;align-items:center;justify-content:space-between;background:linear-gradient(120deg,var(--gv-accent-dark),var(--gv-accent));color:#fff;padding:22px 26px;border-radius:var(--gv-radius-lg);margin:16px 0 14px;box-shadow:var(--gv-shadow-lift);flex-wrap:wrap;gap:12px;}
+		.gvsr-header h1{margin:0;font-size:19px;color:#fff;font-weight:800;}
+		.gvsr-header span{opacity:.85;font-size:12.5px;}
+		.gvsr-btn-export,.gvsr-btn-ghost,.gvsr-btn-add{
+			display:inline-flex;align-items:center;gap:6px;font-family:inherit;cursor:pointer;white-space:nowrap;
+			border-radius:10px;font-size:12.8px;font-weight:700;transition:filter .15s ease, transform .1s ease, background .15s ease;
+		}
+		.gvsr-btn-export{background:#fff;color:var(--gv-accent-dark);padding:10px 18px;border:0;box-shadow:0 1px 2px rgba(0,0,0,.06);}
+		.gvsr-btn-export:hover{filter:brightness(.97);}
+		.gvsr-header .gvsr-btn-ghost{background:rgba(255,255,255,.14);color:#fff;padding:9px 16px;border:1px solid rgba(255,255,255,.3);}
+		.gvsr-header .gvsr-btn-ghost:hover{background:rgba(255,255,255,.22);}
+		.gvsr-btn-ghost{background:var(--gv-surface);color:var(--gv-ink-soft);padding:8px 14px;border:1px solid var(--gv-border);}
+		.gvsr-btn-ghost:hover{border-color:var(--gv-accent);color:var(--gv-accent-dark);}
+		.gvsr-btn-add{background:var(--gv-accent-soft);color:var(--gv-accent-dark);border:1px solid #bfe6e1;padding:9px 16px;}
+		.gvsr-btn-add:hover{background:#d8f0ec;}
+		.gvsr-btn-export:active,.gvsr-btn-ghost:active,.gvsr-btn-add:active{transform:translateY(1px);}
+
+		.gvsr-notice{background:var(--gv-green-soft);color:#166534;border:1px solid #bbf0cd;padding:11px 16px;border-radius:var(--gv-radius-sm);font-size:13px;margin-bottom:14px;max-width:1100px;}
+		.gvsr-stat-cards{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:20px;max-width:1100px;}
 		@media(max-width:900px){.gvsr-stat-cards{grid-template-columns:1fr 1fr;}}
-		.gvsr-stat{background:#fff;border:1px solid #e5e7eb;border-radius:14px;padding:18px 20px;}
-		.gvsr-stat b{display:block;font-size:26px;color:#059669;}
-		.gvsr-stat span{font-size:13px;color:#64748b;}
-		.gvsr-filter-bar{display:flex;gap:10px;margin-bottom:16px;max-width:1100px;flex-wrap:wrap;}
-		.gvsr-filter-bar input[type="text"]{flex:1;min-width:200px;padding:9px 12px;border:1px solid #dcdcde;border-radius:8px;font-family:inherit;}
-		.gvsr-filter-bar select{padding:9px 12px;border:1px solid #dcdcde;border-radius:8px;font-family:inherit;}
-		.gvsr-table-wrap{background:#fff;border:1px solid #e5e7eb;border-radius:12px;overflow:hidden;max-width:1100px;overflow-x:auto;}
+		.gvsr-stat{background:var(--gv-surface);border:1px solid var(--gv-border);border-radius:var(--gv-radius-md);padding:16px 18px;box-shadow:var(--gv-shadow);}
+		.gvsr-stat b{display:block;font-size:24px;color:var(--gv-accent-dark);font-weight:800;}
+		.gvsr-stat span{font-size:12.5px;color:var(--gv-ink-soft);}
+
+		.gvsr-filter-bar{display:flex;gap:10px;margin-bottom:16px;max-width:1100px;flex-wrap:wrap;align-items:flex-end;}
+		.gvsr-filter-bar input[type="text"]{flex:1;min-width:200px;padding:9px 12px;border:1px solid var(--gv-border);border-radius:var(--gv-radius-sm);font-family:inherit;}
+		.gvsr-filter-bar select{padding:9px 12px;border:1px solid var(--gv-border);border-radius:var(--gv-radius-sm);font-family:inherit;background:#fff;}
+
+		.gvsr-table-wrap{background:var(--gv-surface);border:1px solid var(--gv-border);border-radius:var(--gv-radius-md);overflow:hidden;max-width:1100px;overflow-x:auto;box-shadow:var(--gv-shadow);}
 		.gvsr-table{width:100%;border-collapse:collapse;}
-		.gvsr-table th{background:#d1fae5;color:#065f46;padding:10px 14px;text-align:right;font-size:12.5px;white-space:nowrap;cursor:pointer;}
-		.gvsr-table td{padding:9px 14px;border-top:1px solid #f1f5f9;font-size:12.5px;white-space:nowrap;}
-		.gvsr-row-actions a{margin-inline-start:10px;text-decoration:none;font-size:12px;color:#059669;font-weight:700;}
-		.gvsr-row-actions a.gvsr-danger{color:#dc2626;}
-		.gvsr-badge{padding:3px 10px;border-radius:20px;font-size:11px;font-weight:700;white-space:nowrap;}
-		.gvsr-badge-green{background:#dcfce7;color:#166534;}
+		.gvsr-table th{background:#f8fafc;color:var(--gv-ink-soft);padding:11px 14px;text-align:right;font-size:11.8px;font-weight:800;white-space:nowrap;cursor:pointer;border-bottom:1px solid var(--gv-border);}
+		.gvsr-table th:hover{color:var(--gv-accent-dark);}
+		.gvsr-table td{padding:10px 14px;border-top:1px solid #f1f5f9;font-size:12.6px;white-space:nowrap;color:var(--gv-ink);}
+		.gvsr-table tbody tr:hover{background:#fafcfc;}
+		.gvsr-row-actions a{margin-inline-start:10px;text-decoration:none;font-size:12px;color:var(--gv-accent-dark);font-weight:700;}
+		.gvsr-row-actions a.gvsr-danger{color:var(--gv-red);}
+		.gvsr-row-actions a:hover{text-decoration:underline;}
+		.gvsr-badge{padding:3px 10px;border-radius:20px;font-size:10.8px;font-weight:800;white-space:nowrap;}
+		.gvsr-badge-green{background:var(--gv-green-soft);color:#166534;}
 		.gvsr-badge-gray{background:#f1f5f9;color:#64748b;}
 		.gvsr-cs-none{color:#cbd5e1;font-size:11px;}
-		.gvsr-empty{padding:30px;text-align:center;color:#94a3b8;font-size:13px;}
-		.gvsr-hint{font-size:11px;color:#94a3b8;margin:6px 0 10px;}
-		.gvsr-hint-inline{font-size:11.5px;color:#94a3b8;}
+		.gvsr-empty{padding:34px 20px;text-align:center;color:var(--gv-muted);font-size:13px;}
+		.gvsr-hint{font-size:11.3px;color:var(--gv-muted);margin:6px 0 10px;line-height:1.8;}
+		.gvsr-hint-inline{font-size:11.8px;color:var(--gv-muted);line-height:1.9;}
 		.gvsr-preview-tools{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:16px;}
-		.gvsr-preview-tools .gvsr-btn-ghost{background:#f1f5f9;color:#065f46;border:1px solid #d1fae5;}
 
+		/* ---------- فرم‌ها ---------- */
 		.gvsr-form{max-width:1100px;}
-		.gvsr-box{background:#fff;border:1px solid #e5e7eb;border-radius:14px;padding:20px 22px;margin-bottom:18px;}
-		.gvsr-box h2{font-size:15px;margin:0 0 14px;color:#1e293b;}
-		.gvsr-form label{display:block;font-size:12.5px;color:#475569;font-weight:700;margin-bottom:12px;}
-		.gvsr-form input[type="text"],.gvsr-form input[type="url"],.gvsr-form input[type="number"],.gvsr-form textarea,.gvsr-form select.gvsr-select{
-			width:100%;box-sizing:border-box;margin-top:5px;padding:8px 10px;border:1px solid #dcdcde;border-radius:8px;font-family:inherit;font-size:12.5px;font-weight:400;color:#1e293b;
+		.gvsr-box,.gvsr-report-card{background:var(--gv-surface);border:1px solid var(--gv-border);border-radius:var(--gv-radius-lg);padding:20px 22px;margin-bottom:16px;box-shadow:var(--gv-shadow);}
+		.gvsr-box h2{font-size:14.5px;margin:0 0 14px;color:var(--gv-ink);font-weight:800;display:flex;align-items:center;gap:8px;}
+		.gvsr-form label{display:block;font-size:12.3px;color:var(--gv-ink-soft);font-weight:700;margin-bottom:12px;}
+		.gvsr-form input[type="text"],.gvsr-form input[type="url"],.gvsr-form input[type="number"],.gvsr-form input[type="time"],.gvsr-form input[type="password"],.gvsr-form textarea,.gvsr-form select.gvsr-select{
+			width:100%;box-sizing:border-box;margin-top:6px;padding:9px 11px;border:1px solid var(--gv-border);border-radius:var(--gv-radius-sm);font-family:inherit;font-size:12.6px;font-weight:400;color:var(--gv-ink);background:#fff;transition:border-color .15s ease, box-shadow .15s ease;
 		}
+		.gvsr-form input:focus,.gvsr-form textarea:focus,.gvsr-form select:focus{outline:0;border-color:var(--gv-accent);box-shadow:0 0 0 3px var(--gv-accent-soft);}
 		.gvsr-form textarea{resize:vertical;}
 		.gvsr-grid-2{display:grid;grid-template-columns:1fr 1fr;gap:16px;}
 		.gvsr-grid-4{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;}
 		@media(max-width:800px){.gvsr-grid-2,.gvsr-grid-4{grid-template-columns:1fr;}}
 
 		.gvsr-repeater{width:100%;border-collapse:collapse;margin-bottom:10px;}
-		.gvsr-repeater th{background:#f8fafc;font-size:11px;color:#64748b;padding:6px 8px;text-align:right;}
+		.gvsr-repeater th{background:#f8fafc;font-size:10.8px;color:var(--gv-ink-soft);padding:7px 8px;text-align:right;font-weight:800;}
 		.gvsr-repeater td{padding:5px 6px;border-top:1px solid #f1f5f9;vertical-align:middle;}
-		.gvsr-repeater input,.gvsr-repeater select{width:100%;box-sizing:border-box;padding:6px 8px;border:1px solid #e2e8f0;border-radius:6px;font-family:inherit;font-size:11.5px;}
+		.gvsr-repeater input,.gvsr-repeater select{width:100%;box-sizing:border-box;padding:7px 8px;border:1px solid var(--gv-border);border-radius:7px;font-family:inherit;font-size:11.5px;}
 		.gvsr-jdate-group{display:flex;gap:3px;}
 		.gvsr-jdate-group select{min-width:0;}
-		.gvsr-row-del{background:#fee2e2;color:#b91c1c;border:0;border-radius:6px;width:26px;height:26px;cursor:pointer;font-size:12px;}
-		.gvsr-btn-add{background:#ecfdf5;color:#065f46;border:1px dashed #10b981;border-radius:8px;padding:8px 16px;font-size:12.5px;font-weight:700;cursor:pointer;}
+		.gvsr-row-del{background:var(--gv-red-soft);color:var(--gv-red);border:0;border-radius:7px;width:28px;height:28px;cursor:pointer;font-size:12px;}
 		.gvsr-vis-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;}
 		@media(max-width:700px){.gvsr-vis-grid{grid-template-columns:1fr;}}
-		.gvsr-vis-item{display:flex;align-items:center;gap:8px;background:#f8fafc;border:1px solid #eef0f2;border-radius:8px;padding:10px 12px;font-size:12.5px;font-weight:600;color:#334155;margin-bottom:0;}
+		.gvsr-vis-item{display:flex;align-items:center;gap:8px;background:#f8fafc;border:1px solid #eef0f2;border-radius:var(--gv-radius-sm);padding:10px 12px;font-size:12.3px;font-weight:600;color:var(--gv-ink-soft);margin-bottom:0;}
 		.gvsr-vis-item input{width:auto!important;margin:0!important;}
 		.gvsr-form-actions{display:flex;gap:10px;}
 
-		/* پیش‌نمایش گزارش (مشترک بین ادمین و مشتری) */
+		/* ---------- گزارش مشتری (پیش‌نمایش) ---------- */
 		.gvsr-report-view{max-width:1100px;}
-		.gvsr-hidden-flag{background:#fee2e2;color:#b91c1c;font-size:10.5px;font-weight:700;padding:2px 8px;border-radius:20px;margin-inline-start:8px;}
-		.gvsr-report-card{background:#fff;border:1px solid #e5e7eb;border-radius:14px;padding:20px 22px;margin-bottom:18px;}
-		.gvsr-report-card h3{margin:0 0 12px;font-size:14.5px;color:#1e293b;display:flex;align-items:center;}
-		.gvsr-kpi-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:14px;margin-bottom:18px;}
+		.gvsr-hidden-flag{background:var(--gv-red-soft);color:var(--gv-red);font-size:10.3px;font-weight:800;padding:2px 8px;border-radius:20px;margin-inline-start:8px;}
+		.gvsr-report-card h3{margin:0 0 12px;font-size:14px;color:var(--gv-ink);font-weight:800;display:flex;align-items:center;gap:6px;}
+		.gvsr-kpi-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin-bottom:18px;}
 		@media(max-width:900px){.gvsr-kpi-grid{grid-template-columns:repeat(2,1fr);}}
-		.gvsr-kpi{background:#fff;border:1px solid #e5e7eb;border-radius:14px;padding:16px 18px;text-align:center;}
-		.gvsr-kpi b{display:block;font-size:22px;color:#059669;}
-		.gvsr-kpi span{font-size:11.5px;color:#64748b;}
+		.gvsr-kpi{background:#fbfdfd;border:1px solid var(--gv-border);border-radius:var(--gv-radius-md);padding:15px 16px;text-align:center;}
+		.gvsr-kpi b{display:block;font-size:21px;color:var(--gv-accent-dark);font-weight:800;}
+		.gvsr-kpi span{font-size:11.2px;color:var(--gv-ink-soft);}
 		.gvsr-period-grid{display:grid;grid-template-columns:repeat(6,1fr);gap:10px;margin-bottom:18px;}
 		@media(max-width:900px){.gvsr-period-grid{grid-template-columns:repeat(3,1fr);}}
-		.gvsr-period-item{background:#ecfdf5;border:1px solid #d1fae5;border-radius:12px;padding:12px 8px;text-align:center;}
-		.gvsr-period-item b{display:block;font-size:20px;color:#065f46;}
-		.gvsr-period-item span{font-size:10.5px;color:#0f766e;}
-		.gvsr-chart-empty{padding:30px;text-align:center;color:#94a3b8;font-size:12.5px;}
+		.gvsr-period-item{background:var(--gv-accent-soft);border:1px solid #cdeae5;border-radius:var(--gv-radius-md);padding:12px 8px;text-align:center;}
+		.gvsr-period-item b{display:block;font-size:19px;color:var(--gv-accent-dark);font-weight:800;}
+		.gvsr-period-item span{font-size:10.3px;color:#0f766e;}
+		.gvsr-chart-empty{padding:30px;text-align:center;color:var(--gv-muted);font-size:12.5px;}
 		.gvsr-svg-chart{width:100%;height:auto;font-family:inherit;}
-		.gvsr-delta{font-weight:700;white-space:nowrap;}
-		.gvsr-summary-text{white-space:pre-wrap;line-height:2;font-size:13px;color:#334155;background:#f8fafc;border-radius:10px;padding:14px 16px;}
+		.gvsr-delta{font-weight:800;white-space:nowrap;}
+		.gvsr-summary-text{white-space:pre-wrap;line-height:2;font-size:13px;color:#334155;background:#f8fafc;border-radius:var(--gv-radius-sm);padding:14px 16px;}
 
-		/* تب‌های اصلی: گزارش مشتری / کارکرد من / مدیریت تیم */
-		.gvsr-maintabs{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:18px;max-width:1100px;}
-		.gvsr-maintab{background:#fff;border:1px solid #e5e7eb;color:#475569;font-weight:700;font-size:12.5px;padding:10px 18px;border-radius:10px;text-decoration:none;}
-		.gvsr-maintab.is-active{background:#065f46;border-color:#065f46;color:#fff;}
-		.gvsr-maintab:hover{border-color:#059669;}
+		/* ---------- تب‌های اصلی (segmented control) ---------- */
+		.gvsr-maintabs{display:inline-flex;gap:3px;background:#fff;border:1px solid var(--gv-border);padding:4px;border-radius:12px;margin-bottom:16px;box-shadow:var(--gv-shadow);flex-wrap:wrap;}
+		.gvsr-maintab{background:transparent;border:0;color:var(--gv-ink-soft);font-weight:700;font-size:12.6px;padding:9px 18px;border-radius:9px;text-decoration:none;transition:background .15s ease,color .15s ease;}
+		.gvsr-maintab.is-active{background:var(--gv-accent);color:#fff;box-shadow:0 2px 8px rgba(15,118,110,.28);}
+		.gvsr-maintab:not(.is-active):hover{background:#f1f5f9;color:var(--gv-ink);}
 
+		/* ---------- نوار سراسری بالای صفحه: شناسایی کارمند + تایمر ---------- */
+		.gvsr-topbar{position:sticky;top:32px;z-index:500;background:#fff;border:1px solid var(--gv-border);border-radius:var(--gv-radius-md);box-shadow:var(--gv-shadow-lift);padding:12px 18px;margin:16px 0;max-width:1100px;}
+		@media(max-width:782px){.gvsr-topbar{top:46px;}}
+		.gvsr-topbar-row{display:flex;align-items:center;gap:14px;flex-wrap:wrap;}
+		.gvsr-topbar-idle{color:var(--gv-ink-soft);font-size:12.8px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;}
+		.gvsr-topbar-name{font-weight:800;color:var(--gv-ink);}
+		.gvsr-topbar-name .dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--gv-muted);margin-inline-end:6px;}
+		.gvsr-topbar-name.running .dot{background:var(--gv-green);box-shadow:0 0 0 3px var(--gv-green-soft);animation:gvsr-pulse 1.6s infinite;}
+		@keyframes gvsr-pulse{0%{box-shadow:0 0 0 0 rgba(22,163,74,.35);}70%{box-shadow:0 0 0 6px rgba(22,163,74,0);}100%{box-shadow:0 0 0 0 rgba(22,163,74,0);}}
+		.gvsr-topbar-clock{font-family:'Courier New',monospace;font-weight:800;font-size:18px;color:var(--gv-accent-dark);background:var(--gv-accent-soft);border-radius:8px;padding:5px 12px;direction:ltr;letter-spacing:1px;}
+		.gvsr-topbar-form{display:flex;align-items:center;gap:8px;flex-wrap:wrap;flex:1;}
+		.gvsr-topbar-form input[type="text"]{padding:8px 10px;border:1px solid var(--gv-border);border-radius:8px;font-family:inherit;font-size:12.3px;min-width:160px;}
+		.gvsr-topbar-form input[type="text"]:focus{outline:0;border-color:var(--gv-accent);box-shadow:0 0 0 3px var(--gv-accent-soft);}
+		.gvsr-topbar-btn-start{background:var(--gv-accent);color:#fff;border:0;border-radius:9px;padding:8px 18px;font-weight:800;font-size:12.6px;cursor:pointer;white-space:nowrap;}
+		.gvsr-topbar-btn-start:hover{background:var(--gv-accent-dark);}
+		.gvsr-topbar-btn-stop{background:var(--gv-red-soft);color:var(--gv-red);border:1px solid #f7c9c9;border-radius:9px;padding:8px 18px;font-weight:800;font-size:12.6px;cursor:pointer;white-space:nowrap;}
+		.gvsr-topbar-btn-stop:hover{background:#fbdada;}
+		.gvsr-topbar-switch{margin-inline-start:auto;font-size:11.5px;}
+		.gvsr-topbar-switch summary{cursor:pointer;color:var(--gv-muted);list-style:none;}
+		.gvsr-topbar-switch summary::-webkit-details-marker{display:none;}
+		.gvsr-topbar-switch summary:hover{color:var(--gv-accent-dark);}
+		.gvsr-topbar-switch-panel{position:absolute;left:0;margin-top:10px;background:#fff;border:1px solid var(--gv-border);border-radius:var(--gv-radius-md);box-shadow:var(--gv-shadow-lift);padding:16px;width:340px;max-width:90vw;z-index:600;}
+		@media(max-width:600px){.gvsr-topbar-switch-panel{position:static;width:auto;margin-top:12px;}}
+
+		/* ---------- شناسایی کارمند در تب کارکرد من (فشرده) ---------- */
 		.gvsr-emp-identify-form{max-width:900px;}
 		.gvsr-timelog-form{max-width:900px;}
-		.gvsr-radio-row{display:flex;align-items:center;gap:16px;flex-wrap:wrap;background:#f8fafc;border:1px solid #eef0f2;border-radius:8px;padding:10px 14px;margin-bottom:14px;font-weight:700;color:#334155;}
-		.gvsr-radio-item{display:inline-flex;align-items:center;gap:6px;font-weight:600;font-size:12.5px;color:#475569;}
-		.gvsr-radio-item input{width:auto!important;}
+		.gvsr-code-box{background:var(--gv-accent-soft);border:1px solid #bfe6e1;color:var(--gv-accent-dark);border-radius:var(--gv-radius-sm);padding:11px 15px;font-size:12.6px;margin-bottom:14px;}
+		.gvsr-code-box span{display:block;font-size:11px;color:#0f766e;margin-top:3px;font-weight:400;}
 
-		.gvsr-emp-accordion{border:1px solid #e5e7eb;border-radius:10px;padding:10px 14px;margin-bottom:10px;background:#fafafa;}
-		.gvsr-emp-accordion summary{cursor:pointer;font-weight:700;font-size:13px;color:#1e293b;}
-		.gvsr-emp-accordion[open]{background:#fff;}
+		/* ---------- سوییچ روش ثبت ساعت (segmented) ---------- */
+		.gvsr-radio-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap;background:#f8fafc;border:1px solid #eef0f2;border-radius:11px;padding:6px;margin-bottom:16px;font-weight:700;color:var(--gv-ink-soft);}
+		.gvsr-radio-row > span:first-child{padding-inline-start:6px;font-size:11.8px;color:var(--gv-muted);font-weight:600;}
+		.gvsr-radio-item{position:relative;display:inline-flex;align-items:center;gap:6px;font-weight:700;font-size:12.3px;color:var(--gv-ink-soft);padding:8px 16px;border-radius:8px;cursor:pointer;transition:background .15s ease,color .15s ease;}
+		.gvsr-radio-item:has(input:checked){background:#fff;color:var(--gv-accent-dark);box-shadow:var(--gv-shadow);}
+		.gvsr-radio-item input{width:auto!important;accent-color:var(--gv-accent);}
 
-		.gvsr-code-box{background:#ecfdf5;border:1px solid #a7f3d0;color:#065f46;border-radius:10px;padding:12px 16px;font-size:13px;margin-bottom:14px;}
-		.gvsr-code-box span{display:block;font-size:11.5px;color:#0f766e;margin-top:4px;font-weight:400;}
-		.gvsr-node-box,.gvsr-hub-box{border:1px dashed #cbd5e1;border-radius:10px;padding:14px 16px;margin-top:12px;}
-		.gvsr-sync-badge{display:inline-block;padding:3px 10px;border-radius:20px;font-size:10.5px;font-weight:700;}
-		.gvsr-sync-badge.ok{background:#dcfce7;color:#166534;}
-		.gvsr-sync-badge.bad{background:#fee2e2;color:#b91c1c;}
+		.gvsr-emp-accordion{border:1px solid var(--gv-border);border-radius:var(--gv-radius-md);padding:12px 15px;margin-bottom:10px;background:#fafcfc;}
+		.gvsr-emp-accordion summary{cursor:pointer;font-weight:700;font-size:12.8px;color:var(--gv-ink);list-style:none;}
+		.gvsr-emp-accordion summary::-webkit-details-marker{display:none;}
+		.gvsr-emp-accordion[open]{background:#fff;box-shadow:var(--gv-shadow);}
 
-		.gvsr-timer-card{border:1px solid #a7f3d0;background:#f0fdf6;}
-		.gvsr-timer-display{font-family:'Courier New',monospace;font-size:34px;font-weight:800;color:#065f46;letter-spacing:2px;text-align:center;background:#fff;border:1px solid #d1fae5;border-radius:12px;padding:12px;margin:12px 0 16px;direction:ltr;}
+		.gvsr-node-box,.gvsr-hub-box{border:1px dashed #cbd5e1;border-radius:var(--gv-radius-md);padding:14px 16px;margin-top:12px;}
+		.gvsr-sync-badge{display:inline-block;padding:3px 10px;border-radius:20px;font-size:10.5px;font-weight:800;}
+		.gvsr-sync-badge.ok{background:var(--gv-green-soft);color:#166534;}
+		.gvsr-sync-badge.bad{background:var(--gv-red-soft);color:var(--gv-red);}
+
+		/* ---------- مودال هشدار خروج هنگام تایمر فعال ---------- */
 		.gvsr-timer-modal{position:fixed;inset:0;background:rgba(15,23,42,.55);z-index:99999;align-items:center;justify-content:center;}
-		.gvsr-timer-modal-box{background:#fff;border-radius:14px;padding:26px 24px;max-width:380px;width:90%;text-align:center;box-shadow:0 20px 50px rgba(0,0,0,.25);}
-		.gvsr-timer-modal-box p{font-size:13.5px;color:#1e293b;margin:0 0 18px;line-height:1.9;}
+		.gvsr-timer-modal-box{background:#fff;border-radius:var(--gv-radius-lg);padding:26px 24px;max-width:380px;width:90%;text-align:center;box-shadow:0 20px 50px rgba(0,0,0,.25);}
+		.gvsr-timer-modal-box p{font-size:13.5px;color:var(--gv-ink);margin:0 0 18px;line-height:1.9;}
 		.gvsr-timer-modal-actions{display:flex;flex-direction:column;gap:8px;}
 	</style>
 	<?php
