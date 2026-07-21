@@ -17,7 +17,7 @@ if ( ! defined( 'ABSPATH' ) ) { exit; }
  */
 
 define( 'GV_SR_NONCE',      'gv_sr_nonce_action' );
-define( 'GV_SR_DB_VERSION', '1.1' );
+define( 'GV_SR_DB_VERSION', '1.3' );
 define( 'GV_SR_PAGE_SLUG',  'gv-seo-reports' );
 define( 'GV_SR_EMP_COOKIE', 'gv_sr_employee_id' );
 define( 'GV_SR_TEAM_COOKIE','gv_sr_team_token' );
@@ -114,9 +114,11 @@ function gv_sr_maybe_install_db() {
 		id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
 		name VARCHAR(191) NOT NULL,
 		hourly_rate BIGINT UNSIGNED NOT NULL DEFAULT 0,
+		global_code VARCHAR(40) NULL,
 		active TINYINT UNSIGNED NOT NULL DEFAULT 1,
 		created_at DATETIME NOT NULL,
-		PRIMARY KEY  (id)
+		PRIMARY KEY  (id),
+		KEY global_code (global_code)
 	) {$charset_collate};" );
 
 	/* ---- کارکرد روزانه (تایم‌شیت) کارمندان ---- */
@@ -141,6 +143,19 @@ function gv_sr_maybe_install_db() {
 	if ( false === get_option( 'gv_sr_manager_pass_hash', false ) ) {
 		update_option( 'gv_sr_manager_pass_hash', password_hash( 'GrootSEO@1404', PASSWORD_DEFAULT ) );
 	}
+
+	/* ---- تایمر زنده‌ی کارکرد (استارت/استاپ) ---- */
+	$t_timers = $wpdb->prefix . 'gv_sr_active_timers';
+	dbDelta( "CREATE TABLE {$t_timers} (
+		id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+		employee_id BIGINT UNSIGNED NOT NULL,
+		started_at DATETIME NOT NULL,
+		client_name VARCHAR(191) NULL,
+		note VARCHAR(500) NULL,
+		created_at DATETIME NOT NULL,
+		PRIMARY KEY  (id),
+		UNIQUE KEY employee_id (employee_id)
+	) {$charset_collate};" );
 
 	update_option( 'gv_sr_db_version', GV_SR_DB_VERSION );
 }
@@ -977,6 +992,27 @@ function gv_sr_get_employee( $id ) {
 	$t = $wpdb->prefix . 'gv_sr_employees';
 	return $wpdb->get_row( $wpdb->prepare( "SELECT * FROM {$t} WHERE id = %d", (int) $id ) ); // phpcs:ignore
 }
+function gv_sr_get_employee_by_code( $code ) {
+	global $wpdb;
+	$code = gv_sr_sanitize_employee_code( $code );
+	if ( '' === $code ) { return null; }
+	$t = $wpdb->prefix . 'gv_sr_employees';
+	return $wpdb->get_row( $wpdb->prepare( "SELECT * FROM {$t} WHERE global_code = %s", $code ) ); // phpcs:ignore
+}
+function gv_sr_sanitize_employee_code( $code ) {
+	$code = strtolower( trim( (string) $code ) );
+	$code = preg_replace( '/[^a-z0-9\-]/', '', $code );
+	return substr( $code, 0, 40 );
+}
+/** ساخت یک کد کارمندی یکتا و خوانا بر اساس نام (برای اشتراک بین چند سایت) */
+function gv_sr_generate_employee_code( $name ) {
+	$base = sanitize_title( $name );
+	if ( '' === $base ) { $base = 'emp'; }
+	do {
+		$candidate = $base . '-' . wp_rand( 1000, 9999 );
+	} while ( gv_sr_get_employee_by_code( $candidate ) );
+	return $candidate;
+}
 function gv_sr_save_employee( $data, $employee_id = 0 ) {
 	global $wpdb;
 	$t   = $wpdb->prefix . 'gv_sr_employees';
@@ -985,9 +1021,18 @@ function gv_sr_save_employee( $data, $employee_id = 0 ) {
 		'hourly_rate' => max( 0, (int) $data['hourly_rate'] ),
 		'active'      => empty( $data['active'] ) ? 0 : 1,
 	);
+
+	if ( ! empty( $data['global_code'] ) ) {
+		$row['global_code'] = gv_sr_sanitize_employee_code( $data['global_code'] );
+	}
+
 	if ( $employee_id > 0 ) {
 		$wpdb->update( $t, $row, array( 'id' => $employee_id ) ); // phpcs:ignore
 		return $employee_id;
+	}
+
+	if ( empty( $row['global_code'] ) ) {
+		$row['global_code'] = gv_sr_generate_employee_code( $row['name'] );
 	}
 	$row['created_at'] = current_time( 'mysql' );
 	$wpdb->insert( $t, $row ); // phpcs:ignore
@@ -1056,11 +1101,16 @@ function gv_sr_save_timelog( $data, $timelog_id = 0 ) {
 	global $wpdb;
 	$t = $wpdb->prefix . 'gv_sr_timelogs';
 
-	$mode = 'range' === $data['entry_mode'] ? 'range' : 'manual';
+	$mode = in_array( $data['entry_mode'], array( 'range', 'timer' ), true ) ? $data['entry_mode'] : 'manual';
 	if ( 'range' === $mode ) {
 		$hours = gv_sr_calc_range_hours( $data['start_time'], $data['end_time'] );
 		$start = $data['start_time'];
 		$end   = $data['end_time'];
+	} elseif ( 'timer' === $mode ) {
+		// در حالت تایمر، ساعت شروع/پایان/مدت از قبل توسط gv_sr_stop_timer() محاسبه و ارسال شده است.
+		$hours = round( (float) $data['hours'], 2 );
+		$start = isset( $data['start_time'] ) ? $data['start_time'] : null;
+		$end   = isset( $data['end_time'] ) ? $data['end_time'] : null;
 	} else {
 		$h     = max( 0, (int) $data['manual_h'] );
 		$m     = max( 0, min( 59, (int) $data['manual_m'] ) );
@@ -1076,8 +1126,8 @@ function gv_sr_save_timelog( $data, $timelog_id = 0 ) {
 		'start_time'  => $start,
 		'end_time'    => $end,
 		'hours'       => $hours,
-		'client_name' => sanitize_text_field( $data['client_name'] ),
-		'note'        => sanitize_text_field( $data['note'] ),
+		'client_name' => sanitize_text_field( (string) $data['client_name'] ),
+		'note'        => sanitize_text_field( (string) $data['note'] ),
 	);
 
 	if ( $timelog_id > 0 ) {
@@ -1097,6 +1147,65 @@ function gv_sr_employee_total_hours( $employee_id, $date_from = '', $date_to = '
 	$sum  = 0.0;
 	foreach ( $logs as $l ) { $sum += (float) $l->hours; }
 	return round( $sum, 2 );
+}
+
+/* ==========================================================================
+   ۵.۳.۱) تایمر زنده کارکرد (استارت / استاپ)
+   ------------------------------------------------------------
+   کارمند دکمه‌ی «شروع تایمر» را می‌زند؛ لحظه‌ی شروع در دیتابیس
+   ذخیره می‌شود و حتی اگر تب/مرورگر را ببندد، تایمر (که فقط یک
+   رکورد «از چه زمانی شروع شده» است) در پس‌زمینه پابرجا می‌ماند.
+   با زدن «توقف»، مدت‌زمان سپری‌شده محاسبه و یک ردیف کارکرد
+   (entry_mode = timer) برای همان روز ثبت می‌شود.
+   ========================================================================== */
+function gv_sr_get_active_timer( $employee_id ) {
+	global $wpdb;
+	$t = $wpdb->prefix . 'gv_sr_active_timers';
+	return $wpdb->get_row( $wpdb->prepare( "SELECT * FROM {$t} WHERE employee_id = %d", (int) $employee_id ) ); // phpcs:ignore
+}
+function gv_sr_start_timer( $employee_id, $client_name = '', $note = '' ) {
+	$existing = gv_sr_get_active_timer( $employee_id );
+	if ( $existing ) { return $existing; }
+	global $wpdb;
+	$t = $wpdb->prefix . 'gv_sr_active_timers';
+	$wpdb->insert( $t, array( // phpcs:ignore
+		'employee_id' => (int) $employee_id,
+		'started_at'  => current_time( 'mysql' ),
+		'client_name' => sanitize_text_field( $client_name ),
+		'note'        => sanitize_text_field( $note ),
+		'created_at'  => current_time( 'mysql' ),
+	) );
+	return gv_sr_get_active_timer( $employee_id );
+}
+/** توقف تایمر جاری یک کارمند؛ یک ردیف کارکرد جدید می‌سازد و شناسه‌ی آن را برمی‌گرداند (یا false در صورت نبود تایمر فعال) */
+function gv_sr_stop_timer( $employee_id, $client_name_override = null, $note_override = null ) {
+	$timer = gv_sr_get_active_timer( $employee_id );
+	if ( ! $timer ) { return false; }
+
+	$now_mysql = current_time( 'mysql' );
+	// هر دو زمان با یک روش یکسان (تاریخ محلی سایت به‌صورت رشته‌ی ساده) محاسبه می‌شوند تا اختلاف
+	// منطقه‌زمانی سرور تأثیری روی محاسبه‌ی مدت‌زمان سپری‌شده نگذارد.
+	$start_ts = strtotime( $timer->started_at );
+	$now_ts   = strtotime( $now_mysql );
+	$hours    = round( max( 0, $now_ts - $start_ts ) / 3600, 2 );
+
+	$timelog_id = gv_sr_save_timelog( array(
+		'employee_id' => $employee_id,
+		'work_date'   => substr( $timer->started_at, 0, 10 ),
+		'entry_mode'  => 'timer',
+		'start_time'  => substr( $timer->started_at, 11, 5 ),
+		'end_time'    => substr( $now_mysql, 11, 5 ),
+		'hours'       => $hours,
+		'client_name' => null !== $client_name_override ? $client_name_override : $timer->client_name,
+		'note'        => null !== $note_override ? $note_override : $timer->note,
+	) );
+
+	global $wpdb;
+	$wpdb->delete( $wpdb->prefix . 'gv_sr_active_timers', array( 'employee_id' => (int) $employee_id ) ); // phpcs:ignore
+
+	do_action( 'gv_sr_after_save_timelog', $employee_id );
+
+	return array( 'timelog_id' => $timelog_id, 'hours' => $hours );
 }
 
 /* ==========================================================================
@@ -1276,9 +1385,10 @@ function gv_sr_handle_set_employee() {
 	$emp_id = isset( $_POST['existing_employee_id'] ) ? (int) $_POST['existing_employee_id'] : 0;
 	$new_name = isset( $_POST['new_employee_name'] ) ? trim( wp_unslash( $_POST['new_employee_name'] ) ) : '';
 	$new_rate = isset( $_POST['new_employee_rate'] ) ? (int) $_POST['new_employee_rate'] : 0;
+	$shared_code = isset( $_POST['shared_employee_code'] ) ? trim( wp_unslash( $_POST['shared_employee_code'] ) ) : '';
 
 	if ( '' !== $new_name ) {
-		$emp_id = gv_sr_save_employee( array( 'name' => $new_name, 'hourly_rate' => $new_rate, 'active' => 1 ) );
+		$emp_id = gv_sr_save_employee( array( 'name' => $new_name, 'hourly_rate' => $new_rate, 'active' => 1, 'global_code' => $shared_code ) );
 	}
 
 	if ( $emp_id > 0 ) {
@@ -1286,6 +1396,43 @@ function gv_sr_handle_set_employee() {
 	}
 
 	wp_safe_redirect( wp_get_referer() ? wp_get_referer() : admin_url( 'admin.php?page=' . GV_SR_PAGE_SLUG . '&tab=my' ) );
+	exit;
+}
+
+/* ---------------- تایمر زنده کارکرد ---------------- */
+add_action( 'admin_post_gv_sr_start_timer', 'gv_sr_handle_start_timer' );
+function gv_sr_handle_start_timer() {
+	if ( ! current_user_can( 'manage_options' ) ) { wp_die( 'دسترسی ندارید.' ); }
+	check_admin_referer( GV_SR_NONCE );
+
+	$employee_id = gv_sr_current_employee_id();
+	if ( $employee_id <= 0 ) {
+		wp_safe_redirect( admin_url( 'admin.php?page=' . GV_SR_PAGE_SLUG . '&tab=my&err=noemp' ) );
+		exit;
+	}
+	$client_name = isset( $_POST['timer_client_name'] ) ? wp_unslash( $_POST['timer_client_name'] ) : '';
+	$note        = isset( $_POST['timer_note'] ) ? wp_unslash( $_POST['timer_note'] ) : '';
+	gv_sr_start_timer( $employee_id, $client_name, $note );
+
+	wp_safe_redirect( admin_url( 'admin.php?page=' . GV_SR_PAGE_SLUG . '&tab=my&timer_started=1' ) );
+	exit;
+}
+
+add_action( 'admin_post_gv_sr_stop_timer', 'gv_sr_handle_stop_timer' );
+function gv_sr_handle_stop_timer() {
+	if ( ! current_user_can( 'manage_options' ) ) { wp_die( 'دسترسی ندارید.' ); }
+	check_admin_referer( GV_SR_NONCE );
+
+	$employee_id = gv_sr_current_employee_id();
+	if ( $employee_id <= 0 ) {
+		wp_safe_redirect( admin_url( 'admin.php?page=' . GV_SR_PAGE_SLUG . '&tab=my' ) );
+		exit;
+	}
+	$client_override = isset( $_POST['timer_client_name'] ) ? wp_unslash( $_POST['timer_client_name'] ) : null;
+	$note_override   = isset( $_POST['timer_note'] ) ? wp_unslash( $_POST['timer_note'] ) : null;
+	gv_sr_stop_timer( $employee_id, $client_override, $note_override );
+
+	wp_safe_redirect( admin_url( 'admin.php?page=' . GV_SR_PAGE_SLUG . '&tab=my&timer_stopped=1' ) );
 	exit;
 }
 
@@ -1321,6 +1468,10 @@ function gv_sr_handle_save_timelog() {
 	);
 
 	gv_sr_save_timelog( $data, $timelog_id );
+	/**
+	 * فراخوانی بعد از ثبت/ویرایش کارکرد — ماژول همگام‌سازی چندسایتی (در صورت فعال بودن) از این‌جا استفاده می‌کند.
+	 */
+	do_action( 'gv_sr_after_save_timelog', $employee_id );
 	wp_safe_redirect( admin_url( 'admin.php?page=' . GV_SR_PAGE_SLUG . '&tab=my&saved_log=1' ) );
 	exit;
 }
@@ -1336,7 +1487,9 @@ function gv_sr_handle_delete_timelog() {
 
 	// کارمند فقط می‌تواند ردیف‌های خودش را حذف کند؛ مدیرِ احرازشده می‌تواند هر ردیفی را حذف کند.
 	if ( $log && ( (int) $log->employee_id === $employee_id || gv_sr_team_is_authed() ) ) {
+		$affected_employee_id = (int) $log->employee_id;
 		gv_sr_delete_timelog( $id );
+		do_action( 'gv_sr_after_save_timelog', $affected_employee_id );
 	}
 	wp_safe_redirect( wp_get_referer() ? wp_get_referer() : admin_url( 'admin.php?page=' . GV_SR_PAGE_SLUG . '&tab=my' ) );
 	exit;
@@ -1387,6 +1540,12 @@ function gv_sr_handle_team_change_pass() {
 	exit;
 }
 
+/** برچسب خوانا برای روش ثبت ساعت کارکرد */
+function gv_sr_entry_mode_label( $mode ) {
+	$labels = array( 'range' => 'ساعت به ساعت', 'manual' => 'دستی', 'timer' => 'تایمر زنده' );
+	return isset( $labels[ $mode ] ) ? $labels[ $mode ] : $mode;
+}
+
 /* ---------------- خروجی اکسل (CSV) تایم‌شیت ---------------- */
 function gv_sr_output_timesheet_csv( $filename, $logs, $with_employee_col = false, $employee_map = array() ) {
 	nocache_headers();
@@ -1411,7 +1570,7 @@ function gv_sr_output_timesheet_csv( $filename, $logs, $with_employee_col = fals
 		$row = array_merge( $row, array(
 			gv_sr_jalali_numeric( $l->work_date ),
 			gv_sr_weekday_name( $l->work_date ),
-			'range' === $l->entry_mode ? 'ساعت شروع/پایان' : 'دستی',
+			'range' === $l->entry_mode ? 'ساعت شروع/پایان' : gv_sr_entry_mode_label( $l->entry_mode ),
 			$l->start_time ? $l->start_time : '—',
 			$l->end_time ? $l->end_time : '—',
 			$l->hours,
@@ -1624,6 +1783,7 @@ function gv_sr_render_my_tab() {
 	echo '<h3>👤 شناسایی کارمند</h3>';
 	if ( $emp ) {
 		echo '<p class="gvsr-hint-inline">شما اکنون به عنوان <b>' . esc_html( $emp->name ) . '</b> کارکرد ثبت می‌کنید. اگر این شما نیستید، از پایین شخص خودتان را انتخاب یا اضافه کنید.</p>';
+		echo '<div class="gvsr-code-box">کد کارمندی مشترک شما: <b>' . esc_html( $emp->global_code ) . '</b><br><span>اگر روی سایت‌های دیگری هم که همین افزونه را دارند کار می‌کنید، همین کد را دقیقاً همان‌جا هم وارد کنید تا کارکردتان در همه‌ی سایت‌ها یک‌جا جمع شود.</span></div>';
 	} else {
 		echo '<p class="gvsr-hint-inline" style="color:#b91c1c;">هنوز مشخص نکرده‌اید چه کسی هستید. لطفاً نام خود را از لیست انتخاب کنید یا در صورت کارمند جدید بودن، نام خود را وارد کنید — از این به بعد تمام کارکردهایی که ثبت می‌کنید فقط برای شما ذخیره و نمایش داده می‌شود.</p>';
 	}
@@ -1646,6 +1806,9 @@ function gv_sr_render_my_tab() {
 				<input type="text" name="new_employee_name" placeholder="مثلاً: زهرا احمدی">
 			</label>
 		</div>
+		<label>کد کارمندی مشترک (اختیاری) — اگر قبلاً روی سایت دیگری با همین افزونه کد گرفته‌اید، همان را این‌جا وارد کنید تا کارکردتان یکی شود؛ در غیر این صورت خالی بگذارید تا خودکار ساخته شود.
+			<input type="text" name="shared_employee_code" placeholder="مثلاً: zahra-4821">
+		</label>
 		<p class="gvsr-hint">نرخ ساعتی حقوق فقط توسط مدیر در بخش «مدیریت تیم» تنظیم/تغییر می‌کند؛ لازم نیست خودتان آن را وارد کنید.</p>
 		<button type="submit" class="gvsr-btn-add">✅ من این شخص هستم / ثبت من به عنوان کارمند جدید</button>
 	</form>
@@ -1654,7 +1817,60 @@ function gv_sr_render_my_tab() {
 	<?php
 	if ( ! $emp ) { return; }
 
-	/* ---- بازه تاریخی گزارش (پیش‌فرض: از اول تا آخر ماه شمسی جاری) ---- */
+	$active_timer = gv_sr_get_active_timer( $emp->id );
+
+	if ( isset( $_GET['timer_started'] ) ) { echo '<div class="gvsr-notice">تایمر شروع شد.</div>'; }
+	if ( isset( $_GET['timer_stopped'] ) ) { echo '<div class="gvsr-notice">تایمر متوقف شد و کارکرد آن ثبت گردید.</div>'; }
+	?>
+	<div class="gvsr-report-card gvsr-timer-card">
+		<h3>⏱️ تایمر زنده کارکرد</h3>
+		<?php if ( $active_timer ) : ?>
+			<p class="gvsr-hint-inline">تایمر از ساعت <b><?php echo esc_html( substr( $active_timer->started_at, 11, 5 ) ); ?></b> (<?php echo esc_html( gv_sr_jalali_numeric( substr( $active_timer->started_at, 0, 10 ) ) ); ?>) در حال اجراست — حتی اگر این تب یا مرورگر را ببندید، تایمر همچنان در پس‌زمینه ادامه پیدا می‌کند تا خودتان آن را متوقف کنید.</p>
+			<div class="gvsr-timer-display" id="gvsr-timer-display" data-started="<?php echo esc_attr( str_replace( ' ', 'T', $active_timer->started_at ) ); ?>">۰۰:۰۰:۰۰</div>
+			<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" id="gvsr-stop-timer-form">
+				<?php wp_nonce_field( GV_SR_NONCE ); ?>
+				<input type="hidden" name="action" value="gv_sr_stop_timer">
+				<div class="gvsr-grid-2">
+					<label>مربوط به کدام مشتری/کار (اختیاری، می‌توانید همین‌جا اصلاح کنید)
+						<input type="text" name="timer_client_name" list="gvsr-client-datalist" value="<?php echo esc_attr( $active_timer->client_name ); ?>">
+					</label>
+					<label>توضیح کوتاه (اختیاری)
+						<input type="text" name="timer_note" value="<?php echo esc_attr( $active_timer->note ); ?>">
+					</label>
+				</div>
+				<button type="submit" class="gvsr-btn-export" onclick="return confirm('تایمر متوقف شود و کارکرد این مدت ثبت شود؟');">⏹ توقف تایمر و ثبت کارکرد</button>
+			</form>
+		<?php else : ?>
+			<p class="gvsr-hint-inline">اگر همین الان شروع به کار می‌کنید و می‌خواهید ساعت کارتان به‌طور خودکار محاسبه شود (به‌جای وارد کردن دستی ساعت شروع/پایان)، تایمر را روشن کنید.</p>
+			<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>">
+				<?php wp_nonce_field( GV_SR_NONCE ); ?>
+				<input type="hidden" name="action" value="gv_sr_start_timer">
+				<div class="gvsr-grid-2">
+					<label>مربوط به کدام مشتری/کار (اختیاری)
+						<input type="text" name="timer_client_name" list="gvsr-client-datalist">
+					</label>
+					<label>توضیح کوتاه (اختیاری)
+						<input type="text" name="timer_note">
+					</label>
+				</div>
+				<button type="submit" class="gvsr-btn-add">▶️ شروع تایمر</button>
+			</form>
+		<?php endif; ?>
+	</div>
+
+	<!-- مودال هشدار خروج، فقط وقتی تایمر فعال است و کاربر داخل همین پیشخوان روی لینکی کلیک می‌کند -->
+	<div id="gvsr-timer-leave-modal" class="gvsr-timer-modal" style="display:none;">
+		<div class="gvsr-timer-modal-box">
+			<p>⏱️ تایمر کارکرد شما هنوز در حال اجراست. قبل از رفتن چه کار کنیم؟</p>
+			<div class="gvsr-timer-modal-actions">
+				<button type="button" class="gvsr-btn-export" id="gvsr-timer-stop-and-go">⏹ متوقف کن و برو</button>
+				<button type="button" class="gvsr-btn-ghost" id="gvsr-timer-continue-and-go">▶️ ادامه بده و فقط برو</button>
+				<button type="button" class="gvsr-btn-ghost" id="gvsr-timer-cancel-nav">انصراف (همین‌جا بمانم)</button>
+			</div>
+		</div>
+	</div>
+
+	<?php
 	list( $default_from, $default_to ) = gv_sr_current_jalali_month_bounds();
 	$from = isset( $_GET['from_jy'] ) ? gv_sr_read_jalali_get( 'from', $default_from ) : $default_from;
 	$to   = isset( $_GET['to_jy'] ) ? gv_sr_read_jalali_get( 'to', $default_to ) : $default_to;
@@ -1769,7 +1985,7 @@ function gv_sr_render_my_tab() {
 						<tr>
 							<td><?php echo esc_html( gv_sr_jalali_numeric( $l->work_date ) ); ?></td>
 							<td><?php echo esc_html( gv_sr_weekday_name( $l->work_date ) ); ?></td>
-							<td><?php echo 'range' === $l->entry_mode ? 'ساعت به ساعت' : 'دستی'; ?></td>
+							<td><?php echo esc_html( gv_sr_entry_mode_label( $l->entry_mode ) ); ?></td>
 							<td><?php echo esc_html( $l->start_time ? $l->start_time : '—' ); ?></td>
 							<td><?php echo esc_html( $l->end_time ? $l->end_time : '—' ); ?></td>
 							<td><b><?php echo esc_html( gv_sr_fa_digits( $l->hours ) ); ?></b></td>
@@ -1799,6 +2015,73 @@ function gv_sr_render_my_tab() {
 		}
 		radios.forEach(function (r) { r.addEventListener('change', sync); });
 		sync();
+
+		/* ---------------- تایمر زنده کارکرد ---------------- */
+		var display = document.getElementById('gvsr-timer-display');
+		var timerActive = !!display;
+
+		if (display) {
+			var startedAt = new Date(display.getAttribute('data-started'));
+			function faDigits(str) {
+				var map = ['۰','۱','۲','۳','۴','۵','۶','۷','۸','۹'];
+				return String(str).replace(/[0-9]/g, function (d) { return map[d]; });
+			}
+			function pad(n) { return (n < 10 ? '0' : '') + n; }
+			function tick() {
+				var diffSec = Math.max(0, Math.floor((Date.now() - startedAt.getTime()) / 1000));
+				var h = Math.floor(diffSec / 3600);
+				var m = Math.floor((diffSec % 3600) / 60);
+				var s = diffSec % 60;
+				display.textContent = faDigits(pad(h) + ':' + pad(m) + ':' + pad(s));
+			}
+			tick();
+			setInterval(tick, 1000);
+		}
+
+		/* هشدار مرورگر هنگام بستن/رفرش تب — متن دقیق را خود مرورگر کنترل می‌کند (محدودیت امنیتی مرورگرهای مدرن) */
+		window.addEventListener('beforeunload', function (e) {
+			if (!timerActive) { return; }
+			e.preventDefault();
+			e.returnValue = 'تایمر کارکرد شما در حال اجراست.';
+		});
+
+		/* مودال سفارشی هنگام کلیک روی هر لینک داخل پیشخوان، تا وقتی تایمر فعال است */
+		var modal = document.getElementById('gvsr-timer-leave-modal');
+		var pendingUrl = null;
+
+		if (timerActive && modal) {
+			document.addEventListener('click', function (e) {
+				var link = e.target.closest('a[href]');
+				if (!link) { return; }
+				if (link.target === '_blank' || link.href.indexOf('javascript:') === 0) { return; }
+				e.preventDefault();
+				pendingUrl = link.href;
+				modal.style.display = 'flex';
+			});
+
+			document.getElementById('gvsr-timer-cancel-nav').addEventListener('click', function () {
+				modal.style.display = 'none';
+				pendingUrl = null;
+			});
+
+			document.getElementById('gvsr-timer-continue-and-go').addEventListener('click', function () {
+				var url = pendingUrl;
+				modal.style.display = 'none';
+				if (url) { window.location.href = url; }
+			});
+
+			document.getElementById('gvsr-timer-stop-and-go').addEventListener('click', function () {
+				var url = pendingUrl;
+				modal.style.display = 'none';
+				timerActive = false; // از نمایش دوباره‌ی مودال روی ناوبری بعدی جلوگیری می‌کند
+
+				var form = document.getElementById('gvsr-stop-timer-form');
+				var body = new URLSearchParams(new FormData(form));
+				fetch(form.action, { method: 'POST', credentials: 'same-origin', body: body })
+					.then(function () { if (url) { window.location.href = url; } })
+					.catch(function () { if (url) { window.location.href = url; } });
+			});
+		}
 	});
 	</script>
 	<?php
@@ -2003,7 +2286,7 @@ function gv_sr_render_team_tab() {
 								<tr>
 									<td><?php echo esc_html( gv_sr_jalali_numeric( $l->work_date ) ); ?></td>
 									<td><?php echo esc_html( gv_sr_weekday_name( $l->work_date ) ); ?></td>
-									<td><?php echo 'range' === $l->entry_mode ? 'ساعت به ساعت' : 'دستی'; ?></td>
+									<td><?php echo esc_html( gv_sr_entry_mode_label( $l->entry_mode ) ); ?></td>
 									<td><?php echo esc_html( $l->start_time ?: '—' ); ?></td>
 									<td><?php echo esc_html( $l->end_time ?: '—' ); ?></td>
 									<td><b><?php echo esc_html( gv_sr_fa_digits( $l->hours ) ); ?></b></td>
@@ -2030,7 +2313,13 @@ function gv_sr_render_team_tab() {
 			<div style="align-self:flex-end;"><button type="submit" class="gvsr-btn-export">💾 تغییر رمز</button></div>
 		</form>
 	</div>
+
 	<?php
+	/**
+	 * نقطه‌ی توسعه: ماژول همگام‌سازی چندسایتی (در صورت نصب/فعال بودن)، تنظیمات
+	 * هاب/سایت مبدأ و گزارش یکپارچه‌ی همه‌ی سایت‌ها را از همین‌جا اضافه می‌کند.
+	 */
+	do_action( 'gv_sr_team_tab_extra', $from, $to );
 }
 
 /* ==========================================================================
@@ -2387,6 +2676,20 @@ function gv_sr_admin_styles() {
 		.gvsr-emp-accordion{border:1px solid #e5e7eb;border-radius:10px;padding:10px 14px;margin-bottom:10px;background:#fafafa;}
 		.gvsr-emp-accordion summary{cursor:pointer;font-weight:700;font-size:13px;color:#1e293b;}
 		.gvsr-emp-accordion[open]{background:#fff;}
+
+		.gvsr-code-box{background:#ecfdf5;border:1px solid #a7f3d0;color:#065f46;border-radius:10px;padding:12px 16px;font-size:13px;margin-bottom:14px;}
+		.gvsr-code-box span{display:block;font-size:11.5px;color:#0f766e;margin-top:4px;font-weight:400;}
+		.gvsr-node-box,.gvsr-hub-box{border:1px dashed #cbd5e1;border-radius:10px;padding:14px 16px;margin-top:12px;}
+		.gvsr-sync-badge{display:inline-block;padding:3px 10px;border-radius:20px;font-size:10.5px;font-weight:700;}
+		.gvsr-sync-badge.ok{background:#dcfce7;color:#166534;}
+		.gvsr-sync-badge.bad{background:#fee2e2;color:#b91c1c;}
+
+		.gvsr-timer-card{border:1px solid #a7f3d0;background:#f0fdf6;}
+		.gvsr-timer-display{font-family:'Courier New',monospace;font-size:34px;font-weight:800;color:#065f46;letter-spacing:2px;text-align:center;background:#fff;border:1px solid #d1fae5;border-radius:12px;padding:12px;margin:12px 0 16px;direction:ltr;}
+		.gvsr-timer-modal{position:fixed;inset:0;background:rgba(15,23,42,.55);z-index:99999;align-items:center;justify-content:center;}
+		.gvsr-timer-modal-box{background:#fff;border-radius:14px;padding:26px 24px;max-width:380px;width:90%;text-align:center;box-shadow:0 20px 50px rgba(0,0,0,.25);}
+		.gvsr-timer-modal-box p{font-size:13.5px;color:#1e293b;margin:0 0 18px;line-height:1.9;}
+		.gvsr-timer-modal-actions{display:flex;flex-direction:column;gap:8px;}
 	</style>
 	<?php
 }
@@ -2698,8 +3001,6 @@ function gv_sr_render_customer_dashboard( $user_id ) {
 		<?php
 		$line_items = array();
 		foreach ( $traffic_trend as $t ) { $line_items[] = array( 'label' => $t['label'], 'value' => $t['after'] ); }
-		$line_items = array_reverse( $line_items );
-
 		echo gv_sr_svg_line_chart( $line_items, '#2563eb' ); // phpcs:ignore
 		?>
 	</div>
@@ -2719,7 +3020,6 @@ function gv_sr_render_customer_dashboard( $user_id ) {
 				if ( $h['rank'] <= 0 ) { continue; }
 				$line_items[] = array( 'label' => gv_sr_jalali_numeric( $h['date'] ), 'value' => $h['rank'] );
 			}
-			$line_items = array_reverse( $line_items );
 			if ( count( $line_items ) < 2 ) { continue; }
 			echo '<h4 style="font-size:12.5px;color:#334155;margin:16px 0 6px;">' . esc_html( $keyword ) . '</h4>';
 			echo gv_sr_svg_line_chart( $line_items, '#7c3aed', 640, 140, true ); // phpcs:ignore
