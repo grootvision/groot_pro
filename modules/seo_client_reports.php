@@ -1939,127 +1939,92 @@ function gv_sr_render_admin_list() {
 /* ==========================================================================
    ۸.۱) تب «کارکرد من» — مختص خود کارمند (بر اساس شناسایی کوکی)
    ========================================================================== */
+/**
+ * ==========================================================
+ *  بازطراحی تب «کارکرد من» — Groot Vision SEO Reports
+ *  ------------------------------------------------------------
+ *  این فایل فقط شامل بخش‌هایی است که باید در فایل اصلی افزونه
+ *  جایگزین شوند. نحوه‌ی استفاده در انتهای همین فایل توضیح داده شده.
+ * ==========================================================
+ */
+
+/* ==========================================================================
+   ۱) جایگزین تابع gv_sr_render_my_tab() در فایل اصلی
+   ------------------------------------------------------------
+   تغییرات کلیدی نسبت به نسخه قبلی:
+   - فرم «شناسایی کارمند» و کارت «تایمر زنده» و مودال خروج، از این تب
+     حذف شدند؛ چون نوار بالای صفحه (gv_sr_render_top_bar) که در همه‌ی
+     تب‌ها از جمله همین تب نمایش داده می‌شود، دقیقاً همین‌ کارها را
+     انجام می‌داد. نتیجه: همان id ها (مثل gvsr-timer-display و
+     gvsr-timer-leave-modal) دو بار در صفحه تکرار می‌شدند که هم باعث
+     بهم‌ریختگی بصری می‌شد و هم اسکریپت را روی id تکراری اجرا می‌کرد.
+   - محتوای باقی‌مانده (ثبت کارکرد، فیلتر بازه، آمار، جدول) در یک
+     چیدمان دو‌ستونه چسبان (sidebar + main) قرار گرفته تا به‌جای
+     اسکرول طولانی، فرم ثبت کارکرد همیشه کنار دست بماند و جدول/آمار
+     در ستون اصلی و عریض‌تر دیده شود.
+   ========================================================================== */
 function gv_sr_render_my_tab() {
 	$emp = gv_sr_current_employee();
 
-	echo '<div class="gvsr-report-card">';
-	echo '<h3>👤 شناسایی کارمند</h3>';
-	if ( $emp ) {
-		echo '<p class="gvsr-hint-inline">شما اکنون به عنوان <b>' . esc_html( $emp->name ) . '</b> کارکرد ثبت می‌کنید. اگر این شما نیستید، از پایین شخص خودتان را انتخاب یا اضافه کنید.</p>';
-		echo '<div class="gvsr-code-box">کد کارمندی مشترک شما: <b>' . esc_html( $emp->global_code ) . '</b><br><span>اگر روی سایت‌های دیگری هم که همین افزونه را دارند کار می‌کنید، همین کد را دقیقاً همان‌جا هم وارد کنید تا کارکردتان در همه‌ی سایت‌ها یک‌جا جمع شود.</span></div>';
-	} else {
-		echo '<p class="gvsr-hint-inline" style="color:#b91c1c;">هنوز مشخص نکرده‌اید چه کسی هستید. لطفاً نام خود را از لیست انتخاب کنید یا در صورت کارمند جدید بودن، نام خود را وارد کنید — از این به بعد تمام کارکردهایی که ثبت می‌کنید فقط برای شما ذخیره و نمایش داده می‌شود.</p>';
+	if ( ! $emp ) {
+		echo '<div class="gvsr-empty">برای استفاده از این بخش، ابتدا از نوار بالای صفحه خودتان را به‌عنوان کارمند مشخص کنید.</div>';
+		return;
 	}
 
-	$employees = gv_sr_get_employees( true );
-	?>
-	<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" class="gvsr-emp-identify-form">
-		<?php wp_nonce_field( GV_SR_NONCE ); ?>
-		<input type="hidden" name="action" value="gv_sr_set_employee">
-		<div class="gvsr-grid-2">
-			<label>من یکی از کارمندان زیر هستم:
-				<select name="existing_employee_id" class="gvsr-select">
-					<option value="0">— انتخاب کنید —</option>
-					<?php foreach ( $employees as $e ) : ?>
-						<option value="<?php echo esc_attr( $e->id ); ?>" <?php selected( $emp && (int) $emp->id === (int) $e->id ); ?>><?php echo esc_html( $e->name ); ?></option>
-					<?php endforeach; ?>
-				</select>
-			</label>
-			<label>یا اگر کارمند جدید هستید، نام خود را بنویسید:
-				<input type="text" name="new_employee_name" placeholder="مثلاً: زهرا احمدی">
-			</label>
-		</div>
-		<label>کد کارمندی مشترک (اختیاری) — اگر قبلاً روی سایت دیگری با همین افزونه کد گرفته‌اید، همان را این‌جا وارد کنید تا کارکردتان یکی شود؛ در غیر این صورت خالی بگذارید تا خودکار ساخته شود.
-			<input type="text" name="shared_employee_code" placeholder="مثلاً: zahra-4821">
-		</label>
-		<p class="gvsr-hint">نرخ ساعتی حقوق فقط توسط مدیر در بخش «مدیریت تیم» تنظیم/تغییر می‌کند؛ لازم نیست خودتان آن را وارد کنید.</p>
-		<button type="submit" class="gvsr-btn-add">✅ من این شخص هستم / ثبت من به عنوان کارمند جدید</button>
-	</form>
-	</div>
-
-	<?php
-	if ( ! $emp ) { return; }
-
-	$active_timer = gv_sr_get_active_timer( $emp->id );
-
-	if ( isset( $_GET['timer_started'] ) ) { echo '<div class="gvsr-notice">تایمر شروع شد.</div>'; }
-	if ( isset( $_GET['timer_stopped'] ) ) { echo '<div class="gvsr-notice">تایمر متوقف شد و کارکرد آن ثبت گردید.</div>'; }
-	?>
-	<div class="gvsr-report-card gvsr-timer-card">
-		<h3>⏱️ تایمر زنده کارکرد</h3>
-		<?php if ( $active_timer ) : ?>
-			<p class="gvsr-hint-inline">تایمر از ساعت <b><?php echo esc_html( substr( $active_timer->started_at, 11, 5 ) ); ?></b> (<?php echo esc_html( gv_sr_jalali_numeric( substr( $active_timer->started_at, 0, 10 ) ) ); ?>) در حال اجراست — حتی اگر این تب یا مرورگر را ببندید، تایمر همچنان در پس‌زمینه ادامه پیدا می‌کند تا خودتان آن را متوقف کنید.</p>
-			<div class="gvsr-timer-display" id="gvsr-timer-display" data-started="<?php echo esc_attr( str_replace( ' ', 'T', $active_timer->started_at ) ); ?>">۰۰:۰۰:۰۰</div>
-			<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" id="gvsr-stop-timer-form">
-				<?php wp_nonce_field( GV_SR_NONCE ); ?>
-				<input type="hidden" name="action" value="gv_sr_stop_timer">
-				<div class="gvsr-grid-2">
-					<label>مربوط به کدام مشتری/کار (اختیاری، می‌توانید همین‌جا اصلاح کنید)
-						<input type="text" name="timer_client_name" list="gvsr-client-datalist" value="<?php echo esc_attr( $active_timer->client_name ); ?>">
-					</label>
-					<label>توضیح کوتاه (اختیاری)
-						<input type="text" name="timer_note" value="<?php echo esc_attr( $active_timer->note ); ?>">
-					</label>
-				</div>
-				<button type="submit" class="gvsr-btn-export" onclick="return confirm('تایمر متوقف شود و کارکرد این مدت ثبت شود؟');">⏹ توقف تایمر و ثبت کارکرد</button>
-			</form>
-		<?php else : ?>
-			<p class="gvsr-hint-inline">اگر همین الان شروع به کار می‌کنید و می‌خواهید ساعت کارتان به‌طور خودکار محاسبه شود (به‌جای وارد کردن دستی ساعت شروع/پایان)، تایمر را روشن کنید.</p>
-			<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>">
-				<?php wp_nonce_field( GV_SR_NONCE ); ?>
-				<input type="hidden" name="action" value="gv_sr_start_timer">
-				<div class="gvsr-grid-2">
-					<label>مربوط به کدام مشتری/کار (اختیاری)
-						<input type="text" name="timer_client_name" list="gvsr-client-datalist">
-					</label>
-					<label>توضیح کوتاه (اختیاری)
-						<input type="text" name="timer_note">
-					</label>
-				</div>
-				<button type="submit" class="gvsr-btn-add">▶️ شروع تایمر</button>
-			</form>
-		<?php endif; ?>
-	</div>
-
-	<!-- مودال هشدار خروج، فقط وقتی تایمر فعال است و کاربر داخل همین پیشخوان روی لینکی کلیک می‌کند -->
-	<div id="gvsr-timer-leave-modal" class="gvsr-timer-modal" style="display:none;">
-		<div class="gvsr-timer-modal-box">
-			<p>⏱️ تایمر کارکرد شما هنوز در حال اجراست. قبل از رفتن چه کار کنیم؟</p>
-			<div class="gvsr-timer-modal-actions">
-				<button type="button" class="gvsr-btn-export" id="gvsr-timer-stop-and-go">⏹ متوقف کن و برو</button>
-				<button type="button" class="gvsr-btn-ghost" id="gvsr-timer-continue-and-go">▶️ ادامه بده و فقط برو</button>
-				<button type="button" class="gvsr-btn-ghost" id="gvsr-timer-cancel-nav">انصراف (همین‌جا بمانم)</button>
-			</div>
-		</div>
-	</div>
-
-	<?php
 	list( $default_from, $default_to ) = gv_sr_current_jalali_month_bounds();
 	$from = isset( $_GET['from_jy'] ) ? gv_sr_read_jalali_get( 'from', $default_from ) : $default_from;
 	$to   = isset( $_GET['to_jy'] ) ? gv_sr_read_jalali_get( 'to', $default_to ) : $default_to;
 
-	/* ---- در حال ویرایش یک ردیف کارکرد؟ ---- */
+	/* در حال ویرایش یک ردیف کارکرد؟ */
 	$editing = null;
 	if ( isset( $_GET['edit_log'] ) ) {
 		$maybe = gv_sr_get_timelog( (int) $_GET['edit_log'] );
 		if ( $maybe && (int) $maybe->employee_id === (int) $emp->id ) { $editing = $maybe; }
 	}
+
+	$logs        = gv_sr_get_timelogs( array( 'employee_id' => $emp->id, 'date_from' => $from, 'date_to' => $to ) );
+	$total_hours = gv_sr_employee_total_hours( $emp->id, $from, $to );
+	$rate        = (int) $emp->hourly_rate;
+	$total_pay   = $rate > 0 ? round( $total_hours * $rate ) : 0;
+
+	$export_url = wp_nonce_url(
+		admin_url( 'admin-post.php?action=gv_sr_export_my_timesheet&from=' . rawurlencode( $from ) . '&to=' . rawurlencode( $to ) ),
+		GV_SR_NONCE
+	);
+
+	if ( isset( $_GET['timer_started'] ) ) { echo '<div class="gvsr-notice">تایمر شروع شد.</div>'; }
+	if ( isset( $_GET['timer_stopped'] ) ) { echo '<div class="gvsr-notice">تایمر متوقف شد و کارکرد آن ثبت گردید.</div>'; }
+	if ( isset( $_GET['saved_log'] ) ) { echo '<div class="gvsr-notice">کارکرد با موفقیت ثبت شد.</div>'; }
+
+	echo '<div class="gvsr-my-layout">';
+
+	/* ==================== ستون کناری: هویت + فرم ثبت کارکرد ==================== */
+	echo '<div class="gvsr-my-sidebar">';
+
 	?>
+	<div class="gvsr-report-card gvsr-my-idcard">
+		<h3>👤 <?php echo esc_html( $emp->name ); ?></h3>
+		<div class="gvsr-code-box">
+			کد کارمندی مشترک: <b><?php echo esc_html( $emp->global_code ); ?></b>
+			<span>اگر روی سایت‌های دیگری هم با همین افزونه کار می‌کنید، همین کد را آن‌جا هم وارد کنید تا کارکردتان یک‌جا جمع شود.</span>
+		</div>
+		<p class="gvsr-hint-inline">برای تغییر کارمند، یا شروع/توقف تایمر زنده، از نوار بالای همین صفحه استفاده کنید.</p>
+	</div>
+
 	<div class="gvsr-report-card">
-		<h3>➕ <?php echo $editing ? 'ویرایش کارکرد ثبت‌شده' : 'ثبت کارکرد امروز'; ?></h3>
+		<h3><?php echo $editing ? '✏️ ویرایش کارکرد ثبت‌شده' : '➕ ثبت کارکرد جدید'; ?></h3>
 		<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" class="gvsr-timelog-form">
 			<?php wp_nonce_field( GV_SR_NONCE ); ?>
 			<input type="hidden" name="action" value="gv_sr_save_timelog">
 			<input type="hidden" name="timelog_id" value="<?php echo esc_attr( $editing ? $editing->id : 0 ); ?>">
-			<div class="gvsr-grid-2">
-				<label>تاریخ کارکرد (شمسی)
-					<?php echo gv_sr_jalali_select_fields( 'log_date', $editing ? $editing->work_date : '' ); ?>
-				</label>
-				<label>مربوط به کدام مشتری/کار بوده؟ (اختیاری)
-					<input type="text" name="client_name" list="gvsr-client-datalist" value="<?php echo esc_attr( $editing ? $editing->client_name : '' ); ?>" placeholder="مثلاً: فروشگاه نمونه">
-				</label>
-			</div>
 
+			<label>تاریخ کارکرد (شمسی)
+				<?php echo gv_sr_jalali_select_fields( 'log_date', $editing ? $editing->work_date : '' ); ?>
+			</label>
+
+			<label>مربوط به کدام مشتری/کار بوده؟ (اختیاری)
+				<input type="text" name="client_name" list="gvsr-client-datalist" value="<?php echo esc_attr( $editing ? $editing->client_name : '' ); ?>" placeholder="مثلاً: فروشگاه نمونه">
+			</label>
 			<datalist id="gvsr-client-datalist">
 				<?php foreach ( gv_sr_get_clients() as $c ) : ?>
 					<option value="<?php echo esc_attr( $c->client_name ); ?>"></option>
@@ -2068,7 +2033,7 @@ function gv_sr_render_my_tab() {
 
 			<label class="gvsr-radio-row">روش ثبت ساعت کار:
 				<span class="gvsr-radio-item"><input type="radio" name="entry_mode" value="range" class="gvsr-mode-radio" <?php checked( ! $editing || 'range' === $editing->entry_mode ); ?>> از ساعت تا ساعت</span>
-				<span class="gvsr-radio-item"><input type="radio" name="entry_mode" value="manual" class="gvsr-mode-radio" <?php checked( $editing && 'manual' === $editing->entry_mode ); ?>> وارد کردن دستی مدت‌زمان</span>
+				<span class="gvsr-radio-item"><input type="radio" name="entry_mode" value="manual" class="gvsr-mode-radio" <?php checked( $editing && 'manual' === $editing->entry_mode ); ?>> ثبت دستی مدت‌زمان</span>
 			</label>
 
 			<div class="gvsr-grid-2 gvsr-mode-range">
@@ -2095,13 +2060,19 @@ function gv_sr_render_my_tab() {
 			<div class="gvsr-form-actions">
 				<button type="submit" class="gvsr-btn-export"><?php echo $editing ? '💾 بروزرسانی کارکرد' : '💾 ثبت کارکرد'; ?></button>
 				<?php if ( $editing ) : ?>
-					<a class="gvsr-btn-ghost" href="<?php echo esc_url( admin_url( 'admin.php?page=' . GV_SR_PAGE_SLUG . '&tab=my' ) ); ?>">انصراف از ویرایش</a>
+					<a class="gvsr-btn-ghost" href="<?php echo esc_url( admin_url( 'admin.php?page=' . GV_SR_PAGE_SLUG . '&tab=my' ) ); ?>">انصراف</a>
 				<?php endif; ?>
 			</div>
 		</form>
 	</div>
+	<?php
 
-	<div class="gvsr-report-card">
+	echo '</div>'; /* پایان .gvsr-my-sidebar */
+
+	/* ==================== ستون اصلی: فیلتر بازه + آمار + جدول ==================== */
+	echo '<div class="gvsr-my-main">';
+	?>
+	<div class="gvsr-report-card gvsr-my-filter-card">
 		<h3>📅 بازه گزارش‌گیری</h3>
 		<form method="get" class="gvsr-filter-bar" style="align-items:flex-end;">
 			<input type="hidden" name="page" value="<?php echo esc_attr( GV_SR_PAGE_SLUG ); ?>">
@@ -2111,20 +2082,8 @@ function gv_sr_render_my_tab() {
 			<button type="submit" class="gvsr-btn-ghost">اعمال بازه</button>
 			<a class="gvsr-btn-ghost" href="<?php echo esc_url( admin_url( 'admin.php?page=' . GV_SR_PAGE_SLUG . '&tab=my' ) ); ?>">بازه ماه جاری</a>
 		</form>
-		<p class="gvsr-hint">پیش‌فرض، بازه از اول تا آخر ماه شمسی جاری است؛ می‌توانید هر بازه دلخواه دیگری را هم انتخاب کنید.</p>
 	</div>
 
-	<?php
-	$logs        = gv_sr_get_timelogs( array( 'employee_id' => $emp->id, 'date_from' => $from, 'date_to' => $to ) );
-	$total_hours = gv_sr_employee_total_hours( $emp->id, $from, $to );
-	$rate        = (int) $emp->hourly_rate;
-	$total_pay   = $rate > 0 ? round( $total_hours * $rate ) : 0;
-
-	$export_url = wp_nonce_url(
-		admin_url( 'admin-post.php?action=gv_sr_export_my_timesheet&from=' . rawurlencode( $from ) . '&to=' . rawurlencode( $to ) ),
-		GV_SR_NONCE
-	);
-	?>
 	<div class="gvsr-kpi-grid" style="grid-template-columns:repeat(3,1fr);">
 		<div class="gvsr-kpi"><b><?php echo esc_html( gv_sr_fa_digits( $total_hours ) ); ?></b><span>جمع ساعت کارکرد در این بازه</span></div>
 		<div class="gvsr-kpi"><b><?php echo $rate > 0 ? esc_html( gv_sr_fa_digits( number_format_i18n( $rate ) ) ) : '—'; ?></b><span>نرخ ساعتی (تومان) — توسط مدیر تنظیم می‌شود</span></div>
@@ -2165,6 +2124,14 @@ function gv_sr_render_my_tab() {
 			</div>
 		<?php endif; ?>
 	</div>
+	<?php
+	echo '</div>'; /* پایان .gvsr-my-main */
+	echo '</div>'; /* پایان .gvsr-my-layout */
+
+	/* فقط سوییچ نمایش «از ساعت تا ساعت / دستی» لازم است؛ منطق تایمر و مودال خروج
+	   دیگر این‌جا تکرار نمی‌شود چون در نوار بالای صفحه (که در همه تب‌ها نمایش
+	   داده می‌شود) همیشه فعال است. */
+	?>
 	<script>
 	document.addEventListener('DOMContentLoaded', function () {
 		var radios = document.querySelectorAll('.gvsr-mode-radio');
@@ -2178,81 +2145,43 @@ function gv_sr_render_my_tab() {
 		}
 		radios.forEach(function (r) { r.addEventListener('change', sync); });
 		sync();
-
-		/* ---------------- تایمر زنده کارکرد ---------------- */
-		var display = document.getElementById('gvsr-timer-display');
-		var timerActive = !!display;
-
-		if (display) {
-			var startedAt = new Date(display.getAttribute('data-started'));
-			function faDigits(str) {
-				var map = ['۰','۱','۲','۳','۴','۵','۶','۷','۸','۹'];
-				return String(str).replace(/[0-9]/g, function (d) { return map[d]; });
-			}
-			function pad(n) { return (n < 10 ? '0' : '') + n; }
-			function tick() {
-				var diffSec = Math.max(0, Math.floor((Date.now() - startedAt.getTime()) / 1000));
-				var h = Math.floor(diffSec / 3600);
-				var m = Math.floor((diffSec % 3600) / 60);
-				var s = diffSec % 60;
-				display.textContent = faDigits(pad(h) + ':' + pad(m) + ':' + pad(s));
-			}
-			tick();
-			setInterval(tick, 1000);
-		}
-
-		/* هشدار مرورگر هنگام بستن/رفرش تب — متن دقیق را خود مرورگر کنترل می‌کند (محدودیت امنیتی مرورگرهای مدرن) */
-		window.addEventListener('beforeunload', function (e) {
-			if (!timerActive) { return; }
-			e.preventDefault();
-			e.returnValue = 'تایمر کارکرد شما در حال اجراست.';
-		});
-
-		/* مودال سفارشی هنگام کلیک روی هر لینک داخل پیشخوان، تا وقتی تایمر فعال است */
-		var modal = document.getElementById('gvsr-timer-leave-modal');
-		var pendingUrl = null;
-
-		if (timerActive && modal) {
-			document.addEventListener('click', function (e) {
-				var link = e.target.closest('a[href]');
-				if (!link) { return; }
-				if (link.target === '_blank' || link.href.indexOf('javascript:') === 0) { return; }
-				e.preventDefault();
-				pendingUrl = link.href;
-				modal.style.display = 'flex';
-			});
-
-			document.getElementById('gvsr-timer-cancel-nav').addEventListener('click', function () {
-				modal.style.display = 'none';
-				pendingUrl = null;
-			});
-
-			document.getElementById('gvsr-timer-continue-and-go').addEventListener('click', function () {
-				var url = pendingUrl;
-				modal.style.display = 'none';
-				if (url) { window.location.href = url; }
-			});
-
-			document.getElementById('gvsr-timer-stop-and-go').addEventListener('click', function () {
-				var url = pendingUrl;
-				modal.style.display = 'none';
-				timerActive = false; // از نمایش دوباره‌ی مودال روی ناوبری بعدی جلوگیری می‌کند
-
-				var form = document.getElementById('gvsr-stop-timer-form');
-				var body = new URLSearchParams(new FormData(form));
-				fetch(form.action, { method: 'POST', credentials: 'same-origin', body: body })
-					.then(function () { if (url) { window.location.href = url; } })
-					.catch(function () { if (url) { window.location.href = url; } });
-			});
-		}
 	});
 	</script>
 	<?php
 }
 
 /* ==========================================================================
+   ۲) این چند خط را داخل تابع gv_sr_admin_styles() (در بخش استایل‌ها)
+   اضافه کنید — مثلاً درست بعد از قانون ".gvsr-emp-identify-form{...}".
+   چیدمان دو‌ستونه‌ی تب «کارکرد من» را می‌سازد.
+   ========================================================================== */
+/*
+.gvsr-my-layout{display:grid;grid-template-columns:328px 1fr;gap:16px;align-items:start;max-width:1100px;}
+@media(max-width:900px){.gvsr-my-layout{grid-template-columns:1fr;}}
+.gvsr-my-sidebar{position:sticky;top:100px;display:flex;flex-direction:column;gap:16px;}
+@media(max-width:900px){.gvsr-my-sidebar{position:static;}}
+.gvsr-my-sidebar .gvsr-report-card{margin-bottom:0;}
+.gvsr-my-idcard h3{margin-bottom:10px;}
+.gvsr-my-main{min-width:0;}
+.gvsr-my-filter-card .gvsr-filter-bar{margin-bottom:0;}
+*/
+
+/* ==========================================================================
    ۸.۲) تب «مدیریت تیم» — ویژه مدیر، با رمز عبور جداگانه
    ========================================================================== */
+/**
+ * ==========================================================
+ *  بازطراحی تب «مدیریت تیم» — Groot Vision SEO Reports
+ *  ------------------------------------------------------------
+ *  منطق و کوئری‌ها دقیقاً همان قبلی‌اند؛ فقط چیدمان تغییر کرده:
+ *  - «افزودن/ویرایش کارمند» و «تغییر رمز عبور» — که کارهای مدیریتیِ
+ *    کم‌تکرار هستند — داخل یک آکاردئون (details/summary) جمع شدند
+ *    و به‌طور پیش‌فرض بسته‌اند (مگر وقتی در حال ویرایش یک کارمند
+ *    هستید یا هنوز هیچ کارمندی ثبت نشده، که خودکار باز می‌شوند).
+ *  - بخش‌های «همیشه لازم» یعنی فیلتر بازه، آمار کلی، جدول حقوق و
+ *    خلاصه سئو، بدون تغییر و همیشه باز باقی مانده‌اند تا مدیر با
+ *    کمترین اسکرول به آن‌ها برسد.
+ *  ========================================================================== */
 function gv_sr_render_team_tab() {
 
 	if ( ! gv_sr_team_is_authed() ) {
@@ -2281,59 +2210,62 @@ function gv_sr_render_team_tab() {
 	echo '<span class="gvsr-hint-inline">این بخش فقط برای مدیر است؛ کارمندان به آن دسترسی ندارند.</span>';
 	echo '</div>';
 
-	/* ---------------- مدیریت کارمندان ---------------- */
+	/* ==================== ۱) آکاردئون: کارمندان و نرخ ساعتی (کم‌تکرار) ==================== */
 	$editing_emp = isset( $_GET['edit_emp'] ) ? gv_sr_get_employee( (int) $_GET['edit_emp'] ) : null;
 	$employees   = gv_sr_get_employees();
+	$open_emp_section = $editing_emp || empty( $employees );
 	?>
-	<div class="gvsr-report-card">
-		<h3>👥 کارمندان تیم سئو و نرخ ساعتی حقوق</h3>
-		<div class="gvsr-table-wrap" style="max-width:100%;margin-bottom:16px;">
-			<?php if ( empty( $employees ) ) : ?>
-				<div class="gvsr-empty">هنوز کارمندی ثبت نشده. کارمندان با ورود به تب «کارکرد من» و معرفی خودشان، این‌جا اضافه می‌شوند؛ یا از فرم زیر مستقیم اضافه کنید.</div>
-			<?php else : ?>
-				<table class="gvsr-table">
-					<thead><tr><th>نام</th><th>نرخ ساعتی (تومان)</th><th>وضعیت</th><th>جمع ساعت (کل دوران)</th><th>عملیات</th></tr></thead>
-					<tbody>
-					<?php foreach ( $employees as $e ) : ?>
-						<tr>
-							<td><b><?php echo esc_html( $e->name ); ?></b></td>
-							<td><?php echo $e->hourly_rate > 0 ? esc_html( gv_sr_fa_digits( number_format_i18n( $e->hourly_rate ) ) ) : '—'; ?></td>
-							<td><?php echo (int) $e->active === 1 ? '<span class="gvsr-badge gvsr-badge-green">فعال</span>' : '<span class="gvsr-badge gvsr-badge-gray">غیرفعال</span>'; ?></td>
-							<td><?php echo esc_html( gv_sr_fa_digits( gv_sr_employee_total_hours( $e->id ) ) ); ?></td>
-							<td class="gvsr-row-actions"><a href="<?php echo esc_url( admin_url( 'admin.php?page=' . GV_SR_PAGE_SLUG . '&tab=team&edit_emp=' . $e->id ) ); ?>">ویرایش</a></td>
-						</tr>
-					<?php endforeach; ?>
-					</tbody>
-				</table>
-			<?php endif; ?>
-		</div>
+	<details class="gvsr-section-toggle" <?php echo $open_emp_section ? 'open' : ''; ?>>
+		<summary>👥 کارمندان تیم سئو و نرخ ساعتی حقوق <span class="gvsr-toggle-count">(<?php echo esc_html( number_format_i18n( count( $employees ) ) ); ?> نفر)</span></summary>
+		<div class="gvsr-section-toggle-body">
+			<div class="gvsr-table-wrap" style="max-width:100%;margin-bottom:16px;">
+				<?php if ( empty( $employees ) ) : ?>
+					<div class="gvsr-empty">هنوز کارمندی ثبت نشده. کارمندان با ورود به تب «کارکرد من» و معرفی خودشان، این‌جا اضافه می‌شوند؛ یا از فرم زیر مستقیم اضافه کنید.</div>
+				<?php else : ?>
+					<table class="gvsr-table">
+						<thead><tr><th>نام</th><th>نرخ ساعتی (تومان)</th><th>وضعیت</th><th>جمع ساعت (کل دوران)</th><th>عملیات</th></tr></thead>
+						<tbody>
+						<?php foreach ( $employees as $e ) : ?>
+							<tr>
+								<td><b><?php echo esc_html( $e->name ); ?></b></td>
+								<td><?php echo $e->hourly_rate > 0 ? esc_html( gv_sr_fa_digits( number_format_i18n( $e->hourly_rate ) ) ) : '—'; ?></td>
+								<td><?php echo (int) $e->active === 1 ? '<span class="gvsr-badge gvsr-badge-green">فعال</span>' : '<span class="gvsr-badge gvsr-badge-gray">غیرفعال</span>'; ?></td>
+								<td><?php echo esc_html( gv_sr_fa_digits( gv_sr_employee_total_hours( $e->id ) ) ); ?></td>
+								<td class="gvsr-row-actions"><a href="<?php echo esc_url( admin_url( 'admin.php?page=' . GV_SR_PAGE_SLUG . '&tab=team&edit_emp=' . $e->id ) ); ?>">ویرایش</a></td>
+							</tr>
+						<?php endforeach; ?>
+						</tbody>
+					</table>
+				<?php endif; ?>
+			</div>
 
-		<h4 style="font-size:13px;color:#1e293b;margin:0 0 10px;"><?php echo $editing_emp ? '✏️ ویرایش کارمند: ' . esc_html( $editing_emp->name ) : '➕ افزودن کارمند جدید'; ?></h4>
-		<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" class="gvsr-grid-4" style="align-items:end;">
-			<?php wp_nonce_field( GV_SR_TEAM_NONCE ); ?>
-			<input type="hidden" name="action" value="gv_sr_save_employee">
-			<input type="hidden" name="employee_id" value="<?php echo esc_attr( $editing_emp ? $editing_emp->id : 0 ); ?>">
-			<label>نام کارمند
-				<input type="text" name="name" required value="<?php echo esc_attr( $editing_emp ? $editing_emp->name : '' ); ?>">
-			</label>
-			<label>نرخ ساعتی (تومان)
-				<input type="number" min="0" step="1000" name="hourly_rate" value="<?php echo esc_attr( $editing_emp ? $editing_emp->hourly_rate : 0 ); ?>">
-			</label>
-			<label class="gvsr-vis-item" style="margin-top:22px;">
-				<input type="checkbox" name="active" <?php checked( ! $editing_emp || (int) $editing_emp->active === 1 ); ?>> کارمند فعال است
-			</label>
-			<button type="submit" class="gvsr-btn-export">💾 ذخیره کارمند</button>
-		</form>
-	</div>
+			<h4 style="font-size:13px;color:#1e293b;margin:0 0 10px;"><?php echo $editing_emp ? '✏️ ویرایش کارمند: ' . esc_html( $editing_emp->name ) : '➕ افزودن کارمند جدید'; ?></h4>
+			<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" class="gvsr-grid-4" style="align-items:end;">
+				<?php wp_nonce_field( GV_SR_TEAM_NONCE ); ?>
+				<input type="hidden" name="action" value="gv_sr_save_employee">
+				<input type="hidden" name="employee_id" value="<?php echo esc_attr( $editing_emp ? $editing_emp->id : 0 ); ?>">
+				<label>نام کارمند
+					<input type="text" name="name" required value="<?php echo esc_attr( $editing_emp ? $editing_emp->name : '' ); ?>">
+				</label>
+				<label>نرخ ساعتی (تومان)
+					<input type="number" min="0" step="1000" name="hourly_rate" value="<?php echo esc_attr( $editing_emp ? $editing_emp->hourly_rate : 0 ); ?>">
+				</label>
+				<label class="gvsr-vis-item" style="margin-top:22px;">
+					<input type="checkbox" name="active" <?php checked( ! $editing_emp || (int) $editing_emp->active === 1 ); ?>> کارمند فعال است
+				</label>
+				<button type="submit" class="gvsr-btn-export">💾 ذخیره کارمند</button>
+			</form>
+		</div>
+	</details>
 
 	<?php
-	/* ---------------- بازه گزارش‌گیری تیم (پیش‌فرض: ماه شمسی جاری) ---------------- */
+	/* ==================== ۲) بازه گزارش‌گیری (همیشه در دسترس) ==================== */
 	list( $default_from, $default_to ) = gv_sr_current_jalali_month_bounds();
 	$from        = isset( $_GET['from_jy'] ) ? gv_sr_read_jalali_get( 'from', $default_from ) : $default_from;
 	$to          = isset( $_GET['to_jy'] ) ? gv_sr_read_jalali_get( 'to', $default_to ) : $default_to;
 	$filter_emp  = isset( $_GET['employee_id'] ) ? (int) $_GET['employee_id'] : 0;
 	?>
-	<div class="gvsr-report-card">
+	<div class="gvsr-report-card gvsr-my-filter-card">
 		<h3>📅 بازه گزارش‌گیری کارکرد و حقوق تیم</h3>
 		<form method="get" class="gvsr-filter-bar" style="align-items:flex-end;">
 			<input type="hidden" name="page" value="<?php echo esc_attr( GV_SR_PAGE_SLUG ); ?>">
@@ -2355,7 +2287,7 @@ function gv_sr_render_team_tab() {
 	</div>
 
 	<?php
-	/* ---------------- خلاصه جامع: ساعت‌کاری تیم + محتوا/کلمات/رتبه‌ها ---------------- */
+	/* ==================== ۳) خلاصه جامع: ساعت‌کاری تیم + محتوا/کلمات/رتبه‌ها ==================== */
 	$grand_hours = 0.0;
 	$grand_pay   = 0;
 	$per_emp     = array();
@@ -2369,8 +2301,8 @@ function gv_sr_render_team_tab() {
 		$grand_pay   += $pay;
 	}
 
-	$kw_summary   = gv_sr_global_keyword_summary( $from, $to );
-	$task_counts  = gv_sr_global_task_counts( $from, $to );
+	$kw_summary    = gv_sr_global_keyword_summary( $from, $to );
+	$task_counts   = gv_sr_global_task_counts( $from, $to );
 	$reports_range = gv_sr_get_reports( array( 'date_from' => $from, 'date_to' => $to, 'limit' => 0 ) );
 	$content_total = $task_counts['content_new'] + $task_counts['content_update'];
 	?>
@@ -2465,25 +2397,42 @@ function gv_sr_render_team_tab() {
 		<?php endforeach; ?>
 	</div>
 
-	<div class="gvsr-report-card">
-		<h3>🔑 تغییر رمز عبور بخش مدیریت تیم</h3>
-		<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" class="gvsr-grid-2">
-			<?php wp_nonce_field( GV_SR_TEAM_NONCE ); ?>
-			<input type="hidden" name="action" value="gv_sr_team_change_pass">
-			<label>رمز عبور جدید (حداقل ۶ کاراکتر)
-				<input type="password" name="new_password" minlength="6" required>
-			</label>
-			<div style="align-self:flex-end;"><button type="submit" class="gvsr-btn-export">💾 تغییر رمز</button></div>
-		</form>
-	</div>
+	<?php /* ==================== ۴) آکاردئون: تغییر رمز عبور (کم‌تکرار) ==================== */ ?>
+	<details class="gvsr-section-toggle">
+		<summary>🔑 تغییر رمز عبور بخش مدیریت تیم</summary>
+		<div class="gvsr-section-toggle-body">
+			<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" class="gvsr-grid-2">
+				<?php wp_nonce_field( GV_SR_TEAM_NONCE ); ?>
+				<input type="hidden" name="action" value="gv_sr_team_change_pass">
+				<label>رمز عبور جدید (حداقل ۶ کاراکتر)
+					<input type="password" name="new_password" minlength="6" required>
+				</label>
+				<div style="align-self:flex-end;"><button type="submit" class="gvsr-btn-export">💾 تغییر رمز</button></div>
+			</form>
+		</div>
+	</details>
 
 	<?php
-	/**
-	 * نقطه‌ی توسعه: ماژول همگام‌سازی چندسایتی (در صورت نصب/فعال بودن)، تنظیمات
-	 * هاب/سایت مبدأ و گزارش یکپارچه‌ی همه‌ی سایت‌ها را از همین‌جا اضافه می‌کند.
-	 */
 	do_action( 'gv_sr_team_tab_extra', $from, $to );
 }
+
+/* ==========================================================================
+   ۲) این چند خط را داخل تابع gv_sr_admin_styles() اضافه کنید
+   (مثلاً کنار قانون‌های .gvsr-emp-accordion که از قبل هست).
+   استایل آکاردئون‌های سطح‌بالا (کارمندان / تغییر رمز) را می‌سازد؛
+   طراحی‌اش عمداً شبیه و هم‌خانواده با .gvsr-emp-accordion است تا
+   یکدست به‌نظر برسد.
+   ========================================================================== */
+/*
+.gvsr-section-toggle{background:var(--gv-surface);border:1px solid var(--gv-border);border-radius:var(--gv-radius-lg);padding:0;margin-bottom:16px;box-shadow:var(--gv-shadow);max-width:1100px;overflow:hidden;}
+.gvsr-section-toggle summary{cursor:pointer;list-style:none;font-size:14px;font-weight:800;color:var(--gv-ink);padding:16px 20px;display:flex;align-items:center;gap:8px;}
+.gvsr-section-toggle summary::-webkit-details-marker{display:none;}
+.gvsr-section-toggle summary::before{content:"›";display:inline-block;transition:transform .15s ease;color:var(--gv-muted);font-size:16px;}
+.gvsr-section-toggle[open] summary::before{transform:rotate(90deg);}
+.gvsr-section-toggle summary:hover{background:#f8fafc;}
+.gvsr-section-toggle .gvsr-toggle-count{font-weight:600;color:var(--gv-muted);font-size:12px;}
+.gvsr-section-toggle-body{padding:0 20px 20px;border-top:1px solid var(--gv-border);padding-top:16px;}
+*/
 
 /* ==========================================================================
    ۹) فرم افزودن / ویرایش گزارش
