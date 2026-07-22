@@ -1127,6 +1127,7 @@ function gv_sr_save_timelog( $data, $timelog_id = 0 ) {
 		'end_time'    => $end,
 		'hours'       => $hours,
 		'client_name' => sanitize_text_field( (string) $data['client_name'] ),
+		'project_id'  => isset( $data['project_id'] ) ? (int) $data['project_id'] : 0,
 		'note'        => sanitize_text_field( (string) $data['note'] ),
 	);
 
@@ -1464,6 +1465,7 @@ function gv_sr_handle_save_timelog() {
 		'manual_h'    => isset( $_POST['manual_h'] ) ? $_POST['manual_h'] : 0,
 		'manual_m'    => isset( $_POST['manual_m'] ) ? $_POST['manual_m'] : 0,
 		'client_name' => isset( $_POST['client_name'] ) ? wp_unslash( $_POST['client_name'] ) : '',
+		'project_id'  => isset( $_POST['project_id'] ) ? (int) $_POST['project_id'] : 0,
 		'note'        => isset( $_POST['note'] ) ? wp_unslash( $_POST['note'] ) : '',
 	);
 
@@ -2033,6 +2035,19 @@ function gv_sr_render_my_tab() {
 					<option value="<?php echo esc_attr( $c->client_name ); ?>"></option>
 				<?php endforeach; ?>
 			</datalist>
+
+			<label>این کارکرد مربوط به کدام پروژه است؟ (اختیاری)
+				<?php $my_projects = gv_sr_get_employee_projects( $emp->id ); ?>
+				<select name="project_id" class="gvsr-select">
+					<option value="0">— بدون پروژه —</option>
+					<?php foreach ( $my_projects as $proj ) : ?>
+						<option value="<?php echo esc_attr( $proj->id ); ?>" <?php selected( $editing ? (int) $editing->project_id : 0, (int) $proj->id ); ?>><?php echo esc_html( $proj->title . ' (' . $proj->client_name . ')' ); ?></option>
+					<?php endforeach; ?>
+				</select>
+				<?php if ( empty( $my_projects ) ) : ?>
+					<span class="gvsr-hint-inline">هنوز به‌عنوان عضو هیچ پروژه‌ای اضافه نشده‌اید؛ از تب «پروژه‌ها» یک مدیر باید شما را به پروژه اضافه کند.</span>
+				<?php endif; ?>
+			</label>
 
 			<label class="gvsr-radio-row">روش ثبت ساعت کار:
 				<span class="gvsr-radio-item"><input type="radio" name="entry_mode" value="range" class="gvsr-mode-radio" <?php checked( ! $editing || 'range' === $editing->entry_mode ); ?>> از ساعت تا ساعت</span>
@@ -3469,6 +3484,19 @@ function gv_sr_delete_project( $project_id ) {
 	$wpdb->update( $wpdb->prefix . 'gv_sr_timelogs', array( 'project_id' => 0 ), array( 'project_id' => $project_id ) ); // phpcs:ignore
 }
 
+/** لیست پروژه‌هایی که یک کارمند خاص عضوشان است (برای انتخاب هنگام ثبت کارکرد) */
+function gv_sr_get_employee_projects( $employee_id ) {
+	global $wpdb;
+	$t_p = $wpdb->prefix . 'gv_sr_projects';
+	$t_m = $wpdb->prefix . 'gv_sr_project_members';
+	return $wpdb->get_results( $wpdb->prepare( // phpcs:ignore
+		"SELECT p.* FROM {$t_p} p
+		 INNER JOIN {$t_m} m ON m.project_id = p.id
+		 WHERE m.employee_id = %d AND p.status IN ('planning','active')
+		 ORDER BY p.title ASC",
+		(int) $employee_id
+	) );
+}
 /* ---------------- اعضای پروژه ---------------- */
 function gv_sr_get_project_members( $project_id ) {
 	global $wpdb;
