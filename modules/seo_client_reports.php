@@ -1811,11 +1811,12 @@ function gv_sr_render_admin_page() {
 	}
 	echo '</div>';
 
-	$maintab = in_array( $tab, array( 'my', 'team' ), true ) ? $tab : 'list';
+	$maintab = in_array( $tab, array( 'my', 'team', 'projects' ), true ) ? $tab : 'list';
 	echo '<div class="gvsr-maintabs">';
 	echo '<a class="gvsr-maintab' . ( 'list' === $maintab ? ' is-active' : '' ) . '" href="' . esc_url( admin_url( 'admin.php?page=' . GV_SR_PAGE_SLUG ) ) . '">📋 گزارش‌های مشتری</a>';
 	echo '<a class="gvsr-maintab' . ( 'my' === $maintab ? ' is-active' : '' ) . '" href="' . esc_url( admin_url( 'admin.php?page=' . GV_SR_PAGE_SLUG . '&tab=my' ) ) . '">🕒 کارکرد من</a>';
 	echo '<a class="gvsr-maintab' . ( 'team' === $maintab ? ' is-active' : '' ) . '" href="' . esc_url( admin_url( 'admin.php?page=' . GV_SR_PAGE_SLUG . '&tab=team' ) ) . '">👥 مدیریت تیم (ویژه مدیر)</a>';
+	echo '<a class="gvsr-maintab' . ( 'projects' === $maintab ? ' is-active' : '' ) . '" href="' . esc_url( admin_url( 'admin.php?page=' . GV_SR_PAGE_SLUG . '&tab=projects' ) ) . '">🗂️ پروژه‌ها</a>';
 	echo '</div>';
 
 	if ( isset( $_GET['saved'] ) ) { echo '<div class="gvsr-notice">گزارش با موفقیت ذخیره شد.</div>'; }
@@ -1827,6 +1828,8 @@ function gv_sr_render_admin_page() {
 
 	if ( 'my' === $tab ) {
 		gv_sr_render_my_tab();
+		} elseif ( 'projects' === $tab ) {
+		gv_sr_render_projects_tab();
 	} elseif ( 'team' === $tab ) {
 		gv_sr_render_team_tab();
 	} elseif ( 'edit' === $tab ) {
@@ -3229,4 +3232,824 @@ function gv_sr_render_customer_dashboard( $user_id ) {
 	</div>
 	<?php
 	gv_sr_admin_sort_script();
+}
+// جدید
+
+if ( ! defined( 'ABSPATH' ) ) { exit; }
+/**
+ * ==========================================================
+ *  Groot Vision — ماژول «مدیریت پروژه‌ها»
+ *  ------------------------------------------------------------
+ *  نحوه‌ی الحاق: محتوای این فایل را در انتهای فایل اصلی افزونه
+ *  (همان فایلی که gv_sr_maybe_install_db و بقیه‌ی توابع gv_sr_*
+ *  در آن هستند) اضافه کنید، یا این فایل را require_once کنید.
+ *  این ماژول از همان ثابت‌ها، توابع تاریخ شمسی، توابع کارمندان/
+ *  تایم‌شیت و استایل مشترک (gv_sr_admin_styles) فایل اصلی استفاده
+ *  می‌کند و چیز جدیدی در آن‌ها تعریف نمی‌کند.
+ *
+ *  آنچه اضافه می‌شود:
+ *   ۱) ۳ جدول دیتابیس جدید: پروژه‌ها / اعضای پروژه / درآمد پروژه
+ *   ۲) یک ستون جدید (project_id) روی جدول تایم‌شیت موجود
+ *      تا کارکرد هر کارمند بتواند به یک پروژه مشخص متصل شود
+ *   ۳) محاسبه‌ی درآمد کل، حقوق پرداختی، و سود خالص هر پروژه
+ *   ۴) تب جدید «🗂️ پروژه‌ها» در پیشخوان (لیست / فرم / نمای جزئیات)
+ *   ۵) نمایش سود پروژه فقط برای مدیرِ احرازشده در تب «مدیریت تیم»
+ * ==========================================================
+ */
+
+define( 'GV_SR_PROJECTS_DB_VERSION', '1.4' );
+define( 'GV_SR_PROJECTS_NONCE', 'gv_sr_projects_nonce_action' );
+
+/* ==========================================================================
+   ۰) نصب/بروزرسانی جداول دیتابیس
+   ========================================================================== */
+add_action( 'plugins_loaded', 'gv_sr_projects_maybe_install_db' );
+function gv_sr_projects_maybe_install_db() {
+	if ( get_option( 'gv_sr_projects_db_version' ) === GV_SR_PROJECTS_DB_VERSION ) { return; }
+
+	global $wpdb;
+	$charset_collate = $wpdb->get_charset_collate();
+	require_once ABSPATH . 'wp-admin/includes/upgrade.php';
+
+	$t_projects = $wpdb->prefix . 'gv_sr_projects';
+	$t_members  = $wpdb->prefix . 'gv_sr_project_members';
+	$t_income   = $wpdb->prefix . 'gv_sr_project_income';
+	$t_timelogs = $wpdb->prefix . 'gv_sr_timelogs';
+
+	dbDelta( "CREATE TABLE {$t_projects} (
+		id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+		title VARCHAR(255) NOT NULL,
+		client_name VARCHAR(191) NOT NULL,
+		user_id BIGINT UNSIGNED NOT NULL DEFAULT 0,
+		manager_employee_id BIGINT UNSIGNED NOT NULL DEFAULT 0,
+		status VARCHAR(20) NOT NULL DEFAULT 'planning',
+		priority VARCHAR(10) NOT NULL DEFAULT 'normal',
+		health VARCHAR(10) NOT NULL DEFAULT 'green',
+		start_date DATE NULL,
+		end_date DATE NULL,
+		progress TINYINT UNSIGNED NOT NULL DEFAULT 0,
+		description LONGTEXT NULL,
+		created_at DATETIME NOT NULL,
+		updated_at DATETIME NOT NULL,
+		PRIMARY KEY  (id),
+		KEY client_name (client_name),
+		KEY user_id (user_id),
+		KEY status (status),
+		KEY manager_employee_id (manager_employee_id)
+	) {$charset_collate};" );
+
+	dbDelta( "CREATE TABLE {$t_members} (
+		id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+		project_id BIGINT UNSIGNED NOT NULL,
+		employee_id BIGINT UNSIGNED NOT NULL,
+		role VARCHAR(120) NULL,
+		added_at DATETIME NOT NULL,
+		PRIMARY KEY  (id),
+		KEY project_id (project_id),
+		KEY employee_id (employee_id),
+		UNIQUE KEY project_employee (project_id, employee_id)
+	) {$charset_collate};" );
+
+	dbDelta( "CREATE TABLE {$t_income} (
+		id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+		project_id BIGINT UNSIGNED NOT NULL,
+		amount BIGINT NOT NULL DEFAULT 0,
+		income_date DATE NOT NULL,
+		note VARCHAR(500) NULL,
+		created_at DATETIME NOT NULL,
+		PRIMARY KEY  (id),
+		KEY project_id (project_id),
+		KEY income_date (income_date)
+	) {$charset_collate};" );
+
+	/* افزودن ستون project_id به جدول تایم‌شیت موجود (dbDelta فقط ستون‌های
+	   جدید را اضافه می‌کند و داده‌های فعلی دست‌نخورده می‌مانند) */
+	dbDelta( "CREATE TABLE {$t_timelogs} (
+		id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+		employee_id BIGINT UNSIGNED NOT NULL,
+		work_date DATE NOT NULL,
+		entry_mode VARCHAR(10) NOT NULL DEFAULT 'manual',
+		start_time VARCHAR(5) NULL,
+		end_time VARCHAR(5) NULL,
+		hours DECIMAL(5,2) NOT NULL DEFAULT 0,
+		client_name VARCHAR(191) NULL,
+		project_id BIGINT UNSIGNED NOT NULL DEFAULT 0,
+		note VARCHAR(500) NULL,
+		created_at DATETIME NOT NULL,
+		PRIMARY KEY  (id),
+		KEY employee_id (employee_id),
+		KEY work_date (work_date),
+		KEY project_id (project_id)
+	) {$charset_collate};" );
+
+	update_option( 'gv_sr_projects_db_version', GV_SR_PROJECTS_DB_VERSION );
+}
+
+/* ==========================================================================
+   ۱) تنظیمات ثابت (وضعیت / اولویت / سلامت پروژه)
+   ========================================================================== */
+function gv_sr_project_statuses() {
+	return array(
+		'planning'   => array( 'label' => 'برنامه‌ریزی',   'color' => '#64748b' ),
+		'active'     => array( 'label' => 'در حال اجرا',    'color' => '#2563eb' ),
+		'on_hold'    => array( 'label' => 'متوقف‌شده',      'color' => '#b45309' ),
+		'completed'  => array( 'label' => 'تکمیل‌شده',      'color' => '#16a34a' ),
+		'cancelled'  => array( 'label' => 'لغوشده',         'color' => '#dc2626' ),
+	);
+}
+function gv_sr_project_priorities() {
+	return array(
+		'low'    => array( 'label' => 'کم',      'color' => '#64748b' ),
+		'normal' => array( 'label' => 'عادی',    'color' => '#2563eb' ),
+		'high'   => array( 'label' => 'بالا',    'color' => '#b45309' ),
+		'urgent' => array( 'label' => 'فوری',    'color' => '#dc2626' ),
+	);
+}
+function gv_sr_project_health_types() {
+	return array(
+		'green'  => array( 'label' => 'سالم',        'color' => '#16a34a', 'icon' => '🟢' ),
+		'yellow' => array( 'label' => 'نیازمند توجه', 'color' => '#b45309', 'icon' => '🟡' ),
+		'red'    => array( 'label' => 'در خطر',       'color' => '#dc2626', 'icon' => '🔴' ),
+	);
+}
+function gv_sr_project_status_label( $key ) {
+	$s = gv_sr_project_statuses();
+	return isset( $s[ $key ] ) ? $s[ $key ]['label'] : $key;
+}
+function gv_sr_project_badge( $key, $map_fn ) {
+	$map = call_user_func( $map_fn );
+	$info = isset( $map[ $key ] ) ? $map[ $key ] : array( 'label' => $key, 'color' => '#64748b' );
+	return '<span class="gvsr-badge" style="background:' . esc_attr( $info['color'] ) . '1a;color:' . esc_attr( $info['color'] ) . ';">' . esc_html( ( $info['icon'] ?? '' ) . ' ' . $info['label'] ) . '</span>';
+}
+
+/* ==========================================================================
+   ۲) دسترسی به دیتابیس — پروژه‌ها
+   ========================================================================== */
+function gv_sr_get_project( $id ) {
+	global $wpdb;
+	$t = $wpdb->prefix . 'gv_sr_projects';
+	return $wpdb->get_row( $wpdb->prepare( "SELECT * FROM {$t} WHERE id = %d", (int) $id ) ); // phpcs:ignore
+}
+
+function gv_sr_get_projects( $args = array() ) {
+	global $wpdb;
+	$t = $wpdb->prefix . 'gv_sr_projects';
+
+	$defaults = array(
+		'status'      => '',
+		'client_name' => '',
+		'manager_id'  => 0,
+		'search'      => '',
+		'orderby'     => 'created_at',
+		'order'       => 'DESC',
+	);
+	$args = wp_parse_args( $args, $defaults );
+
+	$where  = array( '1=1' );
+	$params = array();
+
+	if ( '' !== $args['status'] ) { $where[] = 'status = %s'; $params[] = $args['status']; }
+	if ( '' !== $args['client_name'] ) { $where[] = 'client_name = %s'; $params[] = $args['client_name']; }
+	if ( $args['manager_id'] > 0 ) { $where[] = 'manager_employee_id = %d'; $params[] = (int) $args['manager_id']; }
+	if ( '' !== $args['search'] ) {
+		$where[]  = '(title LIKE %s OR client_name LIKE %s)';
+		$like     = '%' . $wpdb->esc_like( $args['search'] ) . '%';
+		$params[] = $like;
+		$params[] = $like;
+	}
+
+	$allowed_orderby = array( 'created_at', 'title', 'client_name', 'start_date', 'end_date', 'progress', 'status' );
+	$orderby = in_array( $args['orderby'], $allowed_orderby, true ) ? $args['orderby'] : 'created_at';
+	$order   = 'ASC' === strtoupper( $args['order'] ) ? 'ASC' : 'DESC';
+
+	$sql = "SELECT * FROM {$t} WHERE " . implode( ' AND ', $where ) . " ORDER BY {$orderby} {$order}";
+	return ! empty( $params ) ? $wpdb->get_results( $wpdb->prepare( $sql, $params ) ) : $wpdb->get_results( $sql ); // phpcs:ignore
+}
+
+function gv_sr_save_project( $data, $project_id = 0 ) {
+	global $wpdb;
+	$t   = $wpdb->prefix . 'gv_sr_projects';
+	$now = current_time( 'mysql' );
+
+	$statuses   = array_keys( gv_sr_project_statuses() );
+	$priorities = array_keys( gv_sr_project_priorities() );
+	$healths    = array_keys( gv_sr_project_health_types() );
+
+	$row = array(
+		'title'                => sanitize_text_field( $data['title'] ),
+		'client_name'          => sanitize_text_field( $data['client_name'] ),
+		'user_id'              => (int) $data['user_id'],
+		'manager_employee_id'  => (int) $data['manager_employee_id'],
+		'status'               => in_array( $data['status'], $statuses, true ) ? $data['status'] : 'planning',
+		'priority'             => in_array( $data['priority'], $priorities, true ) ? $data['priority'] : 'normal',
+		'health'               => in_array( $data['health'], $healths, true ) ? $data['health'] : 'green',
+		'start_date'           => ! empty( $data['start_date'] ) ? $data['start_date'] : null,
+		'end_date'             => ! empty( $data['end_date'] ) ? $data['end_date'] : null,
+		'progress'             => max( 0, min( 100, (int) $data['progress'] ) ),
+		'description'          => wp_kses_post( $data['description'] ),
+		'updated_at'           => $now,
+	);
+
+	if ( $project_id > 0 ) {
+		$wpdb->update( $t, $row, array( 'id' => $project_id ) ); // phpcs:ignore
+		return $project_id;
+	}
+	$row['created_at'] = $now;
+	$wpdb->insert( $t, $row ); // phpcs:ignore
+	return (int) $wpdb->insert_id;
+}
+
+function gv_sr_delete_project( $project_id ) {
+	global $wpdb;
+	$project_id = (int) $project_id;
+	$wpdb->delete( $wpdb->prefix . 'gv_sr_projects', array( 'id' => $project_id ) ); // phpcs:ignore
+	$wpdb->delete( $wpdb->prefix . 'gv_sr_project_members', array( 'project_id' => $project_id ) ); // phpcs:ignore
+	$wpdb->delete( $wpdb->prefix . 'gv_sr_project_income', array( 'project_id' => $project_id ) ); // phpcs:ignore
+	// کارکرد ثبت‌شده روی این پروژه حذف نمی‌شود، فقط اتصالش به پروژه برداشته می‌شود
+	$wpdb->update( $wpdb->prefix . 'gv_sr_timelogs', array( 'project_id' => 0 ), array( 'project_id' => $project_id ) ); // phpcs:ignore
+}
+
+/* ---------------- اعضای پروژه ---------------- */
+function gv_sr_get_project_members( $project_id ) {
+	global $wpdb;
+	$t_m = $wpdb->prefix . 'gv_sr_project_members';
+	$t_e = $wpdb->prefix . 'gv_sr_employees';
+	return $wpdb->get_results( $wpdb->prepare( // phpcs:ignore
+		"SELECT m.*, e.name AS employee_name, e.hourly_rate FROM {$t_m} m
+		 INNER JOIN {$t_e} e ON e.id = m.employee_id
+		 WHERE m.project_id = %d ORDER BY e.name ASC",
+		(int) $project_id
+	) );
+}
+
+/** جایگزینی کامل لیست اعضای یک پروژه؛ $rows = آرایه‌ای از [employee_id, role] */
+function gv_sr_save_project_members( $project_id, $rows ) {
+	global $wpdb;
+	$t = $wpdb->prefix . 'gv_sr_project_members';
+	$wpdb->delete( $t, array( 'project_id' => $project_id ) ); // phpcs:ignore
+	if ( empty( $rows ) ) { return; }
+	$now = current_time( 'mysql' );
+	foreach ( $rows as $r ) {
+		$employee_id = (int) $r['employee_id'];
+		if ( $employee_id <= 0 ) { continue; }
+		$wpdb->insert( $t, array( // phpcs:ignore
+			'project_id'  => (int) $project_id,
+			'employee_id' => $employee_id,
+			'role'        => sanitize_text_field( $r['role'] ?? '' ),
+			'added_at'    => $now,
+		) );
+	}
+}
+
+/* ---------------- درآمد پروژه ---------------- */
+function gv_sr_get_project_income_rows( $project_id ) {
+	global $wpdb;
+	$t = $wpdb->prefix . 'gv_sr_project_income';
+	return $wpdb->get_results( $wpdb->prepare( "SELECT * FROM {$t} WHERE project_id = %d ORDER BY income_date DESC, id DESC", (int) $project_id ) ); // phpcs:ignore
+}
+function gv_sr_save_project_income_row( $data, $income_id = 0 ) {
+	global $wpdb;
+	$t   = $wpdb->prefix . 'gv_sr_project_income';
+	$row = array(
+		'project_id'   => (int) $data['project_id'],
+		'amount'       => (int) $data['amount'],
+		'income_date'  => $data['income_date'],
+		'note'         => sanitize_text_field( $data['note'] ?? '' ),
+	);
+	if ( $income_id > 0 ) {
+		$wpdb->update( $t, $row, array( 'id' => $income_id ) ); // phpcs:ignore
+		return $income_id;
+	}
+	$row['created_at'] = current_time( 'mysql' );
+	$wpdb->insert( $t, $row ); // phpcs:ignore
+	return (int) $wpdb->insert_id;
+}
+function gv_sr_delete_project_income_row( $income_id ) {
+	global $wpdb;
+	$wpdb->delete( $wpdb->prefix . 'gv_sr_project_income', array( 'id' => (int) $income_id ) ); // phpcs:ignore
+}
+
+/* ==========================================================================
+   ۳) محاسبه سود پروژه — فقط برای مدیریت
+   ========================================================================== */
+
+/** مجموع درآمد ثبت‌شده برای یک پروژه (اختیاراً در یک بازه تاریخی) */
+function gv_sr_project_total_income( $project_id, $date_from = '', $date_to = '' ) {
+	global $wpdb;
+	$t = $wpdb->prefix . 'gv_sr_project_income';
+	$where  = array( 'project_id = %d' );
+	$params = array( (int) $project_id );
+	if ( '' !== $date_from ) { $where[] = 'income_date >= %s'; $params[] = $date_from; }
+	if ( '' !== $date_to )   { $where[] = 'income_date <= %s'; $params[] = $date_to; }
+	$sql = "SELECT SUM(amount) FROM {$t} WHERE " . implode( ' AND ', $where );
+	return (int) $wpdb->get_var( $wpdb->prepare( $sql, $params ) ); // phpcs:ignore
+}
+
+/** مجموع حقوق پرداختی پروژه = مجموع (ساعت کارکرد روی این پروژه × نرخ ساعتی همان کارمند) */
+function gv_sr_project_labor_cost( $project_id, $date_from = '', $date_to = '' ) {
+	global $wpdb;
+	$t_log = $wpdb->prefix . 'gv_sr_timelogs';
+	$t_emp = $wpdb->prefix . 'gv_sr_employees';
+
+	$where  = array( 'l.project_id = %d' );
+	$params = array( (int) $project_id );
+	if ( '' !== $date_from ) { $where[] = 'l.work_date >= %s'; $params[] = $date_from; }
+	if ( '' !== $date_to )   { $where[] = 'l.work_date <= %s'; $params[] = $date_to; }
+
+	$sql = "SELECT l.hours, e.hourly_rate FROM {$t_log} l
+	        INNER JOIN {$t_emp} e ON e.id = l.employee_id
+	        WHERE " . implode( ' AND ', $where );
+	$rows = $wpdb->get_results( $wpdb->prepare( $sql, $params ) ); // phpcs:ignore
+
+	$total_hours = 0.0;
+	$total_cost  = 0.0;
+	foreach ( $rows as $r ) {
+		$total_hours += (float) $r->hours;
+		$total_cost  += (float) $r->hours * (int) $r->hourly_rate;
+	}
+	return array( 'hours' => round( $total_hours, 2 ), 'cost' => (int) round( $total_cost ) );
+}
+
+/** خلاصه کامل سود یک پروژه: درآمد / هزینه نیروی انسانی / سود خالص */
+function gv_sr_project_profit( $project_id, $date_from = '', $date_to = '' ) {
+	$income = gv_sr_project_total_income( $project_id, $date_from, $date_to );
+	$labor  = gv_sr_project_labor_cost( $project_id, $date_from, $date_to );
+	return array(
+		'income'      => $income,
+		'labor_hours' => $labor['hours'],
+		'labor_cost'  => $labor['cost'],
+		'net_profit'  => $income - $labor['cost'],
+	);
+}
+
+/* ==========================================================================
+   ۴) Admin Post Handlers
+   ========================================================================== */
+add_action( 'admin_post_gv_sr_save_project', 'gv_sr_handle_save_project' );
+function gv_sr_handle_save_project() {
+	if ( ! current_user_can( 'manage_options' ) ) { wp_die( 'دسترسی ندارید.' ); }
+	check_admin_referer( GV_SR_PROJECTS_NONCE );
+
+	$project_id = isset( $_POST['project_id'] ) ? (int) $_POST['project_id'] : 0;
+
+	$data = array(
+		'title'               => isset( $_POST['title'] ) ? wp_unslash( $_POST['title'] ) : '',
+		'client_name'         => isset( $_POST['client_name'] ) ? wp_unslash( $_POST['client_name'] ) : '',
+		'user_id'             => isset( $_POST['user_id'] ) ? (int) $_POST['user_id'] : 0,
+		'manager_employee_id' => isset( $_POST['manager_employee_id'] ) ? (int) $_POST['manager_employee_id'] : 0,
+		'status'              => isset( $_POST['status'] ) ? sanitize_key( $_POST['status'] ) : 'planning',
+		'priority'            => isset( $_POST['priority'] ) ? sanitize_key( $_POST['priority'] ) : 'normal',
+		'health'              => isset( $_POST['health'] ) ? sanitize_key( $_POST['health'] ) : 'green',
+		'start_date'          => gv_sr_read_jalali_post( 'start_date' ),
+		'end_date'            => gv_sr_read_jalali_post( 'end_date' ),
+		'progress'            => isset( $_POST['progress'] ) ? $_POST['progress'] : 0,
+		'description'         => isset( $_POST['description'] ) ? wp_unslash( $_POST['description'] ) : '',
+	);
+
+	$new_id = gv_sr_save_project( $data, $project_id );
+
+	/* اعضای پروژه */
+	$member_rows = array();
+	if ( ! empty( $_POST['member_employee_id'] ) && is_array( $_POST['member_employee_id'] ) ) {
+		foreach ( $_POST['member_employee_id'] as $i => $emp_id ) {
+			if ( (int) $emp_id <= 0 ) { continue; }
+			$member_rows[] = array(
+				'employee_id' => (int) $emp_id,
+				'role'        => wp_unslash( $_POST['member_role'][ $i ] ?? '' ),
+			);
+		}
+	}
+	gv_sr_save_project_members( $new_id, $member_rows );
+
+	wp_safe_redirect( admin_url( 'admin.php?page=' . GV_SR_PAGE_SLUG . '&tab=projects&view=' . $new_id . '&saved_project=1' ) );
+	exit;
+}
+
+add_action( 'admin_post_gv_sr_delete_project', 'gv_sr_handle_delete_project' );
+function gv_sr_handle_delete_project() {
+	if ( ! current_user_can( 'manage_options' ) ) { wp_die( 'دسترسی ندارید.' ); }
+	check_admin_referer( GV_SR_PROJECTS_NONCE );
+	$id = isset( $_GET['id'] ) ? (int) $_GET['id'] : 0;
+	if ( $id > 0 ) { gv_sr_delete_project( $id ); }
+	wp_safe_redirect( admin_url( 'admin.php?page=' . GV_SR_PAGE_SLUG . '&tab=projects&deleted_project=1' ) );
+	exit;
+}
+
+/* درآمد پروژه — فقط مدیرِ احرازشده (همان رمز تیم) می‌تواند ثبت/حذف کند */
+add_action( 'admin_post_gv_sr_save_project_income', 'gv_sr_handle_save_project_income' );
+function gv_sr_handle_save_project_income() {
+	if ( ! current_user_can( 'manage_options' ) || ! gv_sr_team_is_authed() ) { wp_die( 'دسترسی ندارید.' ); }
+	check_admin_referer( GV_SR_PROJECTS_NONCE );
+
+	$project_id = isset( $_POST['project_id'] ) ? (int) $_POST['project_id'] : 0;
+	gv_sr_save_project_income_row( array(
+		'project_id'  => $project_id,
+		'amount'      => isset( $_POST['amount'] ) ? $_POST['amount'] : 0,
+		'income_date' => gv_sr_read_jalali_post( 'income_date' ),
+		'note'        => isset( $_POST['note'] ) ? wp_unslash( $_POST['note'] ) : '',
+	) );
+
+	wp_safe_redirect( admin_url( 'admin.php?page=' . GV_SR_PAGE_SLUG . '&tab=team&view_profit=' . $project_id . '&saved_income=1' ) );
+	exit;
+}
+add_action( 'admin_post_gv_sr_delete_project_income', 'gv_sr_handle_delete_project_income' );
+function gv_sr_handle_delete_project_income() {
+	if ( ! current_user_can( 'manage_options' ) || ! gv_sr_team_is_authed() ) { wp_die( 'دسترسی ندارید.' ); }
+	check_admin_referer( GV_SR_PROJECTS_NONCE );
+	$id         = isset( $_GET['id'] ) ? (int) $_GET['id'] : 0;
+	$project_id = isset( $_GET['project_id'] ) ? (int) $_GET['project_id'] : 0;
+	if ( $id > 0 ) { gv_sr_delete_project_income_row( $id ); }
+	wp_safe_redirect( admin_url( 'admin.php?page=' . GV_SR_PAGE_SLUG . '&tab=team&view_profit=' . $project_id ) );
+	exit;
+}
+
+/* ==========================================================================
+   ۵) رندر تب «پروژه‌ها» — این تابع را از روتر اصلی تب‌ها صدا بزنید:
+   در gv_sr_render_admin_page() داخل شرط‌های if/elseif یک شاخه اضافه کنید:
+       } elseif ( 'projects' === $tab ) {
+           gv_sr_render_projects_tab();
+   و در نوار gvsr-maintabs یک لینک هم اضافه کنید:
+       <a class="gvsr-maintab ..." href="...&tab=projects">🗂️ پروژه‌ها</a>
+   ========================================================================== */
+function gv_sr_render_projects_tab() {
+	if ( isset( $_GET['saved_project'] ) ) { echo '<div class="gvsr-notice">پروژه با موفقیت ذخیره شد.</div>'; }
+	if ( isset( $_GET['deleted_project'] ) ) { echo '<div class="gvsr-notice">پروژه حذف شد.</div>'; }
+
+	$view_id = isset( $_GET['view'] ) ? (int) $_GET['view'] : 0;
+	$edit_id = isset( $_GET['edit'] ) ? (int) $_GET['edit'] : 0;
+
+	if ( $view_id > 0 ) {
+		$project = gv_sr_get_project( $view_id );
+		if ( $project ) {
+			gv_sr_render_project_detail( $project );
+		} else {
+			echo '<div class="gvsr-empty">پروژه پیدا نشد.</div>';
+		}
+		return;
+	}
+
+	if ( $edit_id > 0 || isset( $_GET['new'] ) ) {
+		$project = $edit_id > 0 ? gv_sr_get_project( $edit_id ) : null;
+		gv_sr_render_project_form( $project );
+		return;
+	}
+
+	gv_sr_render_projects_list();
+}
+
+function gv_sr_render_projects_list() {
+	$status = isset( $_GET['pstatus'] ) ? sanitize_key( $_GET['pstatus'] ) : '';
+	$search = isset( $_GET['ps'] ) ? sanitize_text_field( wp_unslash( $_GET['ps'] ) ) : '';
+	$projects = gv_sr_get_projects( array( 'status' => $status, 'search' => $search ) );
+
+	$total    = count( $projects );
+	$active   = count( array_filter( $projects, function ( $p ) { return 'active' === $p->status; } ) );
+	$at_risk  = count( array_filter( $projects, function ( $p ) { return 'red' === $p->health; } ) );
+	$avg_prog = $total > 0 ? round( array_sum( wp_list_pluck( $projects, 'progress' ) ) / $total ) : 0;
+	?>
+	<div class="gvsr-stat-cards">
+		<div class="gvsr-stat"><b><?php echo esc_html( number_format_i18n( $total ) ); ?></b><span>تعداد کل پروژه‌ها</span></div>
+		<div class="gvsr-stat"><b><?php echo esc_html( number_format_i18n( $active ) ); ?></b><span>در حال اجرا</span></div>
+		<div class="gvsr-stat"><b style="color:#dc2626;"><?php echo esc_html( number_format_i18n( $at_risk ) ); ?></b><span>در خطر (سلامت قرمز)</span></div>
+		<div class="gvsr-stat"><b><?php echo esc_html( gv_sr_fa_digits( $avg_prog ) ); ?>٪</b><span>میانگین پیشرفت</span></div>
+	</div>
+
+	<div class="gvsr-preview-tools">
+		<a class="gvsr-btn-export" href="<?php echo esc_url( admin_url( 'admin.php?page=' . GV_SR_PAGE_SLUG . '&tab=projects&new=1' ) ); ?>">➕ پروژه جدید</a>
+	</div>
+
+	<form method="get" class="gvsr-filter-bar">
+		<input type="hidden" name="page" value="<?php echo esc_attr( GV_SR_PAGE_SLUG ); ?>">
+		<input type="hidden" name="tab" value="projects">
+		<input type="text" name="ps" value="<?php echo esc_attr( $search ); ?>" placeholder="جست‌وجوی عنوان پروژه یا مشتری...">
+		<select name="pstatus">
+			<option value="">همه وضعیت‌ها</option>
+			<?php foreach ( gv_sr_project_statuses() as $key => $info ) : ?>
+				<option value="<?php echo esc_attr( $key ); ?>" <?php selected( $status, $key ); ?>><?php echo esc_html( $info['label'] ); ?></option>
+			<?php endforeach; ?>
+		</select>
+		<button type="submit" class="gvsr-btn-ghost">فیلتر</button>
+	</form>
+
+	<div class="gvsr-table-wrap">
+		<?php if ( empty( $projects ) ) : ?>
+			<div class="gvsr-empty">هنوز پروژه‌ای ثبت نشده. با دکمه «پروژه جدید» شروع کنید.</div>
+		<?php else : ?>
+			<table class="gvsr-table gvsr-sortable">
+				<thead><tr>
+					<th data-sort-type="text">عنوان پروژه</th>
+					<th data-sort-type="text">مشتری</th>
+					<th data-sort-type="text">مسئول پروژه</th>
+					<th data-sort-type="text">وضعیت</th>
+					<th data-sort-type="text">اولویت</th>
+					<th data-sort-type="text">سلامت</th>
+					<th data-sort-type="number">پیشرفت</th>
+					<th data-sort-type="date">پایان</th>
+					<th class="no-sort">عملیات</th>
+				</tr></thead>
+				<tbody>
+				<?php foreach ( $projects as $p ) :
+					$manager = $p->manager_employee_id > 0 ? gv_sr_get_employee( $p->manager_employee_id ) : null;
+					?>
+					<tr>
+						<td><b><?php echo esc_html( $p->title ); ?></b></td>
+						<td><?php echo esc_html( $p->client_name ); ?></td>
+						<td><?php echo $manager ? esc_html( $manager->name ) : '—'; ?></td>
+						<td><?php echo gv_sr_project_badge( $p->status, 'gv_sr_project_statuses' ); ?></td>
+						<td><?php echo gv_sr_project_badge( $p->priority, 'gv_sr_project_priorities' ); ?></td>
+						<td><?php echo gv_sr_project_badge( $p->health, 'gv_sr_project_health_types' ); ?></td>
+						<td data-sort-value="<?php echo esc_attr( $p->progress ); ?>"><?php echo esc_html( gv_sr_fa_digits( $p->progress ) ); ?>٪</td>
+						<td data-sort-value="<?php echo esc_attr( $p->end_date ? strtotime( $p->end_date ) : 0 ); ?>"><?php echo esc_html( gv_sr_jalali_numeric( $p->end_date ) ); ?></td>
+						<td class="gvsr-row-actions">
+							<a href="<?php echo esc_url( admin_url( 'admin.php?page=' . GV_SR_PAGE_SLUG . '&tab=projects&view=' . $p->id ) ); ?>">مشاهده</a>
+							<a href="<?php echo esc_url( admin_url( 'admin.php?page=' . GV_SR_PAGE_SLUG . '&tab=projects&edit=' . $p->id ) ); ?>">ویرایش</a>
+							<a class="gvsr-danger" onclick="return confirm('این پروژه برای همیشه حذف می‌شود. ادامه می‌دهید؟');" href="<?php echo esc_url( wp_nonce_url( admin_url( 'admin-post.php?action=gv_sr_delete_project&id=' . $p->id ), GV_SR_PROJECTS_NONCE ) ); ?>">حذف</a>
+						</td>
+					</tr>
+				<?php endforeach; ?>
+				</tbody>
+			</table>
+		<?php endif; ?>
+	</div>
+	<?php
+	gv_sr_admin_sort_script();
+}
+
+function gv_sr_render_project_form( $project ) {
+	$is_edit    = ! empty( $project );
+	$project_id = $is_edit ? (int) $project->id : 0;
+	$members    = $is_edit ? gv_sr_get_project_members( $project_id ) : array();
+	$employees  = gv_sr_get_employees( true );
+	?>
+	<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" class="gvsr-form">
+		<?php wp_nonce_field( GV_SR_PROJECTS_NONCE ); ?>
+		<input type="hidden" name="action" value="gv_sr_save_project">
+		<input type="hidden" name="project_id" value="<?php echo esc_attr( $project_id ); ?>">
+
+		<div class="gvsr-box">
+			<h2>🗂️ اطلاعات کلی پروژه</h2>
+			<div class="gvsr-grid-2">
+				<label>عنوان پروژه
+					<input type="text" name="title" required value="<?php echo esc_attr( $is_edit ? $project->title : '' ); ?>" placeholder="مثلاً: طراحی سایت فروشگاه نمونه">
+				</label>
+				<label>نام مشتری
+					<input type="text" name="client_name" list="gvsr-client-datalist" required value="<?php echo esc_attr( $is_edit ? $project->client_name : '' ); ?>">
+				</label>
+			</div>
+			<datalist id="gvsr-client-datalist">
+				<?php foreach ( gv_sr_get_clients() as $c ) : ?>
+					<option value="<?php echo esc_attr( $c->client_name ); ?>"></option>
+				<?php endforeach; ?>
+			</datalist>
+
+			<div class="gvsr-grid-2">
+				<label>اتصال به کاربر سایت (اختیاری)
+					<?php
+					wp_dropdown_users( array(
+						'name'              => 'user_id',
+						'show_option_none'  => '— بدون اتصال —',
+						'option_none_value' => 0,
+						'selected'          => $is_edit ? (int) $project->user_id : 0,
+						'class'             => 'gvsr-select',
+					) );
+					?>
+				</label>
+				<label>مسئول پروژه
+					<select name="manager_employee_id" class="gvsr-select">
+						<option value="0">— تعیین نشده —</option>
+						<?php foreach ( $employees as $e ) : ?>
+							<option value="<?php echo esc_attr( $e->id ); ?>" <?php selected( $is_edit ? (int) $project->manager_employee_id : 0, (int) $e->id ); ?>><?php echo esc_html( $e->name ); ?></option>
+						<?php endforeach; ?>
+					</select>
+				</label>
+			</div>
+
+			<div class="gvsr-grid-4">
+				<label>وضعیت پروژه
+					<select name="status" class="gvsr-select">
+						<?php foreach ( gv_sr_project_statuses() as $key => $info ) : ?>
+							<option value="<?php echo esc_attr( $key ); ?>" <?php selected( $is_edit ? $project->status : 'planning', $key ); ?>><?php echo esc_html( $info['label'] ); ?></option>
+						<?php endforeach; ?>
+					</select>
+				</label>
+				<label>اولویت
+					<select name="priority" class="gvsr-select">
+						<?php foreach ( gv_sr_project_priorities() as $key => $info ) : ?>
+							<option value="<?php echo esc_attr( $key ); ?>" <?php selected( $is_edit ? $project->priority : 'normal', $key ); ?>><?php echo esc_html( $info['label'] ); ?></option>
+						<?php endforeach; ?>
+					</select>
+				</label>
+				<label>سلامت پروژه
+					<select name="health" class="gvsr-select">
+						<?php foreach ( gv_sr_project_health_types() as $key => $info ) : ?>
+							<option value="<?php echo esc_attr( $key ); ?>" <?php selected( $is_edit ? $project->health : 'green', $key ); ?>><?php echo esc_html( $info['icon'] . ' ' . $info['label'] ); ?></option>
+						<?php endforeach; ?>
+					</select>
+				</label>
+				<label>درصد پیشرفت
+					<input type="number" min="0" max="100" name="progress" value="<?php echo esc_attr( $is_edit ? $project->progress : 0 ); ?>">
+				</label>
+			</div>
+
+			<div class="gvsr-grid-2">
+				<label>تاریخ شروع (شمسی)
+					<?php echo gv_sr_jalali_select_fields( 'start_date', $is_edit ? $project->start_date : '' ); ?>
+				</label>
+				<label>تاریخ پایان (شمسی)
+					<?php echo gv_sr_jalali_select_fields( 'end_date', $is_edit ? $project->end_date : '' ); ?>
+				</label>
+			</div>
+
+			<label>توضیحات / دامنه پروژه
+				<textarea name="description" rows="4"><?php echo esc_textarea( $is_edit ? $project->description : '' ); ?></textarea>
+			</label>
+		</div>
+
+		<div class="gvsr-box">
+			<h2>👥 اعضای پروژه</h2>
+			<p class="gvsr-hint">هر کارمندی که به‌عنوان عضو اضافه شود، هنگام ثبت کارکرد در تب «کارکرد من» می‌تواند این پروژه را انتخاب کند.</p>
+			<table class="gvsr-repeater" id="gvsr-repeater-members">
+				<thead><tr><th style="width:55%;">کارمند</th><th>نقش در پروژه</th><th style="width:34px;"></th></tr></thead>
+				<tbody>
+					<?php if ( $members ) : foreach ( $members as $m ) : ?>
+					<tr>
+						<td>
+							<select name="member_employee_id[]" class="gvsr-select">
+								<option value="0">— انتخاب —</option>
+								<?php foreach ( $employees as $e ) : ?>
+									<option value="<?php echo esc_attr( $e->id ); ?>" <?php selected( (int) $m->employee_id, (int) $e->id ); ?>><?php echo esc_html( $e->name ); ?></option>
+								<?php endforeach; ?>
+							</select>
+						</td>
+						<td><input type="text" name="member_role[]" value="<?php echo esc_attr( $m->role ); ?>" placeholder="مثلاً: توسعه‌دهنده فرانت"></td>
+						<td><button type="button" class="gvsr-row-del">✕</button></td>
+					</tr>
+					<?php endforeach; else : ?>
+					<tr>
+						<td>
+							<select name="member_employee_id[]" class="gvsr-select">
+								<option value="0">— انتخاب —</option>
+								<?php foreach ( $employees as $e ) : ?>
+									<option value="<?php echo esc_attr( $e->id ); ?>"><?php echo esc_html( $e->name ); ?></option>
+								<?php endforeach; ?>
+							</select>
+						</td>
+						<td><input type="text" name="member_role[]" placeholder="مثلاً: توسعه‌دهنده فرانت"></td>
+						<td><button type="button" class="gvsr-row-del">✕</button></td>
+					</tr>
+					<?php endif; ?>
+				</tbody>
+			</table>
+			<button type="button" class="gvsr-btn-add" data-target="gvsr-repeater-members">➕ افزودن عضو</button>
+		</div>
+
+		<div class="gvsr-form-actions">
+			<button type="submit" class="gvsr-btn-export">💾 ذخیره پروژه</button>
+			<a class="gvsr-btn-ghost" href="<?php echo esc_url( admin_url( 'admin.php?page=' . GV_SR_PAGE_SLUG . '&tab=projects' ) ); ?>">انصراف</a>
+		</div>
+	</form>
+
+	<script>
+	document.addEventListener('DOMContentLoaded', function () {
+		document.querySelectorAll('.gvsr-btn-add').forEach(function (btn) {
+			btn.addEventListener('click', function () {
+				var table = document.getElementById(btn.getAttribute('data-target'));
+				var tbody = table.querySelector('tbody');
+				var lastRow = tbody.querySelector('tr:last-child');
+				var newRow = lastRow.cloneNode(true);
+				newRow.querySelectorAll('input[type="text"]').forEach(function (el) { el.value = ''; });
+				newRow.querySelectorAll('select').forEach(function (el) { el.selectedIndex = 0; });
+				tbody.appendChild(newRow);
+			});
+		});
+		document.addEventListener('click', function (e) {
+			if (e.target && e.target.classList.contains('gvsr-row-del')) {
+				var tbody = e.target.closest('tbody');
+				if (tbody.querySelectorAll('tr').length > 1) { e.target.closest('tr').remove(); }
+			}
+		});
+	});
+	</script>
+	<?php
+}
+
+/** نمای جزئیات پروژه؛ سود پروژه فقط برای مدیر احرازشده نمایش داده می‌شود */
+function gv_sr_render_project_detail( $project ) {
+	$members  = gv_sr_get_project_members( $project->id );
+	$manager  = $project->manager_employee_id > 0 ? gv_sr_get_employee( $project->manager_employee_id ) : null;
+	$is_admin_authed = gv_sr_team_is_authed();
+	?>
+	<div class="gvsr-preview-tools">
+		<a class="gvsr-btn-ghost" href="<?php echo esc_url( admin_url( 'admin.php?page=' . GV_SR_PAGE_SLUG . '&tab=projects' ) ); ?>">← بازگشت به لیست پروژه‌ها</a>
+		<a class="gvsr-btn-ghost" href="<?php echo esc_url( admin_url( 'admin.php?page=' . GV_SR_PAGE_SLUG . '&tab=projects&edit=' . $project->id ) ); ?>">✏️ ویرایش پروژه</a>
+	</div>
+
+	<div class="gvsr-report-card">
+		<h3>🗂️ <?php echo esc_html( $project->title ); ?></h3>
+		<p class="gvsr-hint-inline">
+			مشتری: <b><?php echo esc_html( $project->client_name ); ?></b>
+			&nbsp;|&nbsp; مسئول پروژه: <b><?php echo $manager ? esc_html( $manager->name ) : '—'; ?></b>
+			&nbsp;|&nbsp; بازه: <b><?php echo esc_html( gv_sr_jalali_numeric( $project->start_date ) . ' تا ' . gv_sr_jalali_numeric( $project->end_date ) ); ?></b>
+		</p>
+		<p>
+			<?php echo gv_sr_project_badge( $project->status, 'gv_sr_project_statuses' ); ?>
+			<?php echo gv_sr_project_badge( $project->priority, 'gv_sr_project_priorities' ); ?>
+			<?php echo gv_sr_project_badge( $project->health, 'gv_sr_project_health_types' ); ?>
+		</p>
+
+		<div style="background:#f1f5f9;border-radius:20px;overflow:hidden;height:14px;margin:14px 0 6px;">
+			<div style="height:100%;width:<?php echo esc_attr( (int) $project->progress ); ?>%;background:linear-gradient(90deg,#0f766e,#059669);"></div>
+		</div>
+		<p class="gvsr-hint-inline"><?php echo esc_html( gv_sr_fa_digits( $project->progress ) ); ?>٪ پیشرفت</p>
+
+		<?php if ( $project->description ) : ?>
+			<div class="gvsr-summary-text" style="margin-top:12px;"><?php echo wp_kses_post( wpautop( $project->description ) ); ?></div>
+		<?php endif; ?>
+	</div>
+
+	<div class="gvsr-report-card">
+		<h3>👥 اعضای پروژه (<?php echo esc_html( number_format_i18n( count( $members ) ) ); ?> نفر)</h3>
+		<?php if ( empty( $members ) ) : ?>
+			<div class="gvsr-chart-empty">هنوز عضوی به این پروژه اضافه نشده.</div>
+		<?php else : ?>
+			<table class="gvsr-table">
+				<thead><tr><th>کارمند</th><th>نقش</th><th>جمع ساعت کارکرد روی این پروژه</th></tr></thead>
+				<tbody>
+				<?php foreach ( $members as $m ) :
+					$hours = gv_sr_employee_total_hours( $m->employee_id ); // کل ساعت کارمند
+					$logs  = gv_sr_get_timelogs( array( 'employee_id' => $m->employee_id ) );
+					$proj_hours = 0.0;
+					foreach ( $logs as $l ) { if ( (int) $l->project_id === (int) $project->id ) { $proj_hours += (float) $l->hours; } }
+					?>
+					<tr>
+						<td><b><?php echo esc_html( $m->employee_name ); ?></b></td>
+						<td><?php echo esc_html( $m->role ?: '—' ); ?></td>
+						<td><?php echo esc_html( gv_sr_fa_digits( round( $proj_hours, 2 ) ) ); ?></td>
+					</tr>
+				<?php endforeach; ?>
+				</tbody>
+			</table>
+		<?php endif; ?>
+	</div>
+
+	<?php if ( $is_admin_authed ) : gv_sr_render_project_profit_box( $project ); else : ?>
+		<div class="gvsr-report-card">
+			<h3>💰 سود پروژه</h3>
+			<div class="gvsr-chart-empty">این بخش فقط برای مدیر (پس از ورود در تب «مدیریت تیم») قابل مشاهده است.</div>
+		</div>
+	<?php endif; ?>
+	<?php
+}
+
+/** جعبه‌ی محاسبه سود پروژه — فقط وقتی مدیر با رمز عبور جدا احراز شده باشد صدا زده می‌شود */
+function gv_sr_render_project_profit_box( $project ) {
+	$income_rows = gv_sr_get_project_income_rows( $project->id );
+	$profit      = gv_sr_project_profit( $project->id );
+	?>
+	<div class="gvsr-report-card">
+		<h3>💰 محاسبه سود پروژه (ویژه مدیریت)</h3>
+		<div class="gvsr-kpi-grid" style="grid-template-columns:repeat(3,1fr);">
+			<div class="gvsr-kpi"><b style="color:#059669;"><?php echo esc_html( gv_sr_fa_digits( number_format_i18n( $profit['income'] ) ) ); ?></b><span>مجموع درآمد پروژه (تومان)</span></div>
+			<div class="gvsr-kpi"><b style="color:#b45309;"><?php echo esc_html( gv_sr_fa_digits( number_format_i18n( $profit['labor_cost'] ) ) ); ?></b><span>مجموع حقوق پرداختی (تومان) — <?php echo esc_html( gv_sr_fa_digits( $profit['labor_hours'] ) ); ?> ساعت</span></div>
+			<div class="gvsr-kpi"><b style="color:<?php echo $profit['net_profit'] >= 0 ? '#059669' : '#dc2626'; ?>;"><?php echo esc_html( gv_sr_fa_digits( number_format_i18n( $profit['net_profit'] ) ) ); ?></b><span>سود خالص پروژه (تومان)</span></div>
+		</div>
+
+		<h4 style="font-size:13px;color:#1e293b;margin:18px 0 10px;">➕ ثبت درآمد جدید برای این پروژه</h4>
+		<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" class="gvsr-grid-4" style="align-items:end;">
+			<?php wp_nonce_field( GV_SR_PROJECTS_NONCE ); ?>
+			<input type="hidden" name="action" value="gv_sr_save_project_income">
+			<input type="hidden" name="project_id" value="<?php echo esc_attr( $project->id ); ?>">
+			<label>مبلغ (تومان)
+				<input type="number" min="0" step="1000" name="amount" required>
+			</label>
+			<label>تاریخ دریافت (شمسی)
+				<?php echo gv_sr_jalali_select_fields( 'income_date', '' ); ?>
+			</label>
+			<label>توضیح
+				<input type="text" name="note" placeholder="مثلاً: قسط دوم قرارداد">
+			</label>
+			<button type="submit" class="gvsr-btn-export">💾 ثبت درآمد</button>
+		</form>
+
+		<?php if ( ! empty( $income_rows ) ) : ?>
+			<div class="gvsr-table-wrap" style="max-width:100%;margin-top:16px;">
+				<table class="gvsr-table">
+					<thead><tr><th>تاریخ</th><th>مبلغ (تومان)</th><th>توضیح</th><th>عملیات</th></tr></thead>
+					<tbody>
+					<?php foreach ( $income_rows as $r ) : ?>
+						<tr>
+							<td><?php echo esc_html( gv_sr_jalali_numeric( $r->income_date ) ); ?></td>
+							<td><b style="color:#059669;"><?php echo esc_html( gv_sr_fa_digits( number_format_i18n( $r->amount ) ) ); ?></b></td>
+							<td><?php echo esc_html( $r->note ?: '—' ); ?></td>
+							<td>
+								<a class="gvsr-danger" style="font-size:12px;font-weight:700;" onclick="return confirm('این ردیف درآمد حذف شود؟');" href="<?php echo esc_url( wp_nonce_url( admin_url( 'admin-post.php?action=gv_sr_delete_project_income&id=' . $r->id . '&project_id=' . $project->id ), GV_SR_PROJECTS_NONCE ) ); ?>">حذف</a>
+							</td>
+						</tr>
+					<?php endforeach; ?>
+					</tbody>
+				</table>
+			</div>
+		<?php endif; ?>
+	</div>
+	<?php
 }
