@@ -56,6 +56,12 @@ require_once GV_TOOLS_PATH . 'modules/seo_client_reports.php';
    Node باشد، Hub باشد، هر دو، یا هیچ‌کدام — از تب «مدیریت تیم» قابل تنظیم است) */
 require_once GV_TOOLS_PATH . 'modules/seo_team_sync.php';
 
+/* ورود و ثبت‌نام با ایمیل یا موبایل + رمز عبور ثابت (بدون کد پیامکی) */
+require_once GV_TOOLS_PATH . 'modules/mobile_login.php';
+
+/* مینی CRM و کمپین هدفمند مشتریان (دسته‌بندی خودکار + ارسال پیامک/ایمیل) */
+require_once GV_TOOLS_PATH . 'modules/mini_crm.php';
+
 /*
 |--------------------------------------------------
 | لود داشبورد اصلی

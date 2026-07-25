@@ -37,6 +37,76 @@ function gv_hub_register_menu() {
 		GV_HUB_SLUG,
 		'gv_hub_render_page'
 	);
+
+	// به‌جای نمایش تک‌تک افزونه‌ها در فلای‌اوت هاور منو (که خیلی شلوغ می‌شد)
+	// فقط نام دسته‌بندی‌ها را نشان می‌دهیم؛ کلیک روی هرکدام داشبورد را
+	// به‌صورت فیلترشده روی همان دسته باز می‌کند.
+	$categories = gv_hub_get_categories();
+	foreach ( $categories as $cat_key => $cat ) {
+		add_submenu_page(
+			GV_HUB_SLUG,
+			$cat['label'] . ' | گروت ویژن',
+			$cat['icon'] . ' ' . $cat['label'],
+			'manage_options',
+			GV_HUB_SLUG . '-cat-' . $cat_key,
+			'gv_hub_render_page'
+		);
+	}
+}
+
+/* ==========================================================
+   ۱-ب) پاک کردن تک‌تک زیرمنوهای هر ابزار از لیست منو
+   ------------------------------------------------------------
+   هر ماژول (نوار اعلان، لاگین، فونت، تیکت و ...) صفحه‌ی تنظیمات
+   خودش را با add_submenu_page ثبت می‌کند تا از آدرس
+   admin.php?page=... مستقیم قابل‌دسترسی باشد. این کاملاً لازم است
+   و دست‌نخورده می‌ماند؛ فقط از فهرست/فلای‌اوت منو حذفشان می‌کنیم
+   تا هاور روی «گروت ویژن پرو» شلوغ نباشد و فقط دسته‌بندی‌ها دیده شوند.
+   این کار با اولویت خیلی دیرتر (999) انجام می‌شود تا مطمئن شویم همه‌ی
+   ماژول‌ها قبلاً زیرمنوی خودشان را ثبت کرده‌اند.
+   ========================================================== */
+/* ==========================================================
+   ۱-ب) مخفی‌کردن بصری تک‌تک زیرمنوهای هر ابزار از فلای‌اوت هاور
+   ------------------------------------------------------------
+   نکته‌ی مهم: اینجا از remove_submenu_page() استفاده نمی‌کنیم،
+   چون آن تابع باعث می‌شود وردپرس دیگر نتواند parent_file صفحه را
+   پیدا کند و با کلیک روی کارت‌های داشبورد (که مستقیم به
+   admin.php?page=... می‌روند) خطای «اجازه‌ی دسترسی ندارید»
+   (wp_die در wp-admin/includes/menu.php) نمایش می‌دهد.
+   به‌جای آن فقط با یک اسکریپت کوچک، همان آیتم‌ها را در فلای‌اوت
+   هاور به‌صورت بصری مخفی می‌کنیم؛ ثبت واقعی صفحه دست‌نخورده
+   می‌ماند و کلیک روی کارت‌های داشبورد بدون مشکل کار می‌کند.
+   ========================================================== */
+add_action( 'admin_footer', 'gv_hub_hide_individual_tool_submenus_js' );
+function gv_hub_hide_individual_tool_submenus_js() {
+	$items = gv_hub_get_items();
+	$pages = array();
+	foreach ( $items as $item ) {
+		if ( ! empty( $item['page'] ) ) {
+			$pages[] = $item['page'];
+		}
+	}
+	if ( empty( $pages ) ) { return; }
+	?>
+	<script>
+	(function () {
+		var toolPages = <?php echo wp_json_encode( array_values( $pages ) ); ?>;
+		var menuItem = document.getElementById('toplevel_page_<?php echo esc_js( GV_HUB_SLUG ); ?>');
+		if (!menuItem) { return; }
+		var links = menuItem.querySelectorAll('.wp-submenu a, #adminmenu .wp-submenu a');
+		links.forEach(function (a) {
+			var href = a.getAttribute('href') || '';
+			for (var i = 0; i < toolPages.length; i++) {
+				if (href.indexOf('page=' + toolPages[i]) !== -1) {
+					var li = a.closest('li');
+					if (li) { li.style.display = 'none'; }
+					break;
+				}
+			}
+		});
+	})();
+	</script>
+	<?php
 }
 
 /* ==========================================================
@@ -270,6 +340,26 @@ function gv_hub_get_items() {
 			'status_key'    => 'enabled',
 		),
 		array(
+			'title'         => 'ورود با موبایل یا ایمیل (رمز ثابت)',
+			'desc'          => 'ثبت‌نام و ورود کاربران با ایمیل یا شماره موبایل + رمز عبور ثابت دلخواه، بدون نیاز به کد پیامکی. سازگار با فرم حساب کاربری وودمارت و بی‌تم.',
+			'icon'          => '📱',
+			'page'          => 'gv-mobile-login',
+			'color'         => '#0e4037',
+			'category'      => 'security',
+			'status_option' => GV_MLOGIN_OPT,
+			'status_key'    => 'enabled',
+		),
+		array(
+			'title'         => 'مینی CRM و کمپین مشتریان',
+			'desc'          => 'دسته‌بندی خودکار مشتری‌ها بر اساس رفتار خرید (وفادار / مدت‌هاست خرید نکرده / فقط یک‌بار خریده) و ارسال پیامک یا ایمیل هدفمند برای هر گروه.',
+			'icon'          => '👥',
+			'page'          => GV_CRM_PAGE_SLUG,
+			'color'         => '#9f1239',
+			'category'      => 'marketing',
+			'status_option' => GV_CRM_OPT,
+			'status_key'    => 'enabled',
+		),
+		array(
 			'title'         => 'به‌روزرسانی خودکار گیت‌هاب',
 			'desc'          => 'اتصال افزونه به مخزن گیت‌هاب پروژه؛ با هر Release جدید، دکمه به‌روزرسانی و خلاصه تغییرات به‌صورت خودکار در پیشخوان نمایش داده می‌شود.',
 			'icon'          => '🔄',
@@ -366,6 +456,18 @@ function gv_hub_render_page() {
 	$items      = gv_hub_get_items();
 	$categories = gv_hub_get_categories();
 
+	// اگر از روی یکی از آیتم‌های دسته‌بندی در منو وارد شده باشیم،
+	// همان دسته به‌عنوان فیلتر پیش‌فرض داشبورد فعال می‌شود.
+	$current_page   = isset( $_GET['page'] ) ? sanitize_key( wp_unslash( $_GET['page'] ) ) : GV_HUB_SLUG;
+	$default_filter = 'all';
+	$cat_prefix     = GV_HUB_SLUG . '-cat-';
+	if ( 0 === strpos( $current_page, $cat_prefix ) ) {
+		$maybe_cat = substr( $current_page, strlen( $cat_prefix ) );
+		if ( isset( $categories[ $maybe_cat ] ) ) {
+			$default_filter = $maybe_cat;
+		}
+	}
+
 	// گروه‌بندی آیتم‌ها بر اساس دسته
 	$grouped = array();
 	foreach ( $categories as $cat_key => $cat ) {
@@ -417,11 +519,11 @@ function gv_hub_render_page() {
 
 			<div class="gv-hub-toolbar">
 				<div class="gv-hub-filters" id="gv-hub-filters" role="tablist" aria-label="فیلتر دسته‌بندی">
-					<button type="button" class="gv-hub-filter is-active" data-filter="all" role="tab" aria-selected="true">
+					<button type="button" class="gv-hub-filter <?php echo 'all' === $default_filter ? 'is-active' : ''; ?>" data-filter="all" role="tab" aria-selected="<?php echo 'all' === $default_filter ? 'true' : 'false'; ?>">
 						<span>همه</span><b><?php echo count( $items ); ?></b>
 					</button>
 					<?php foreach ( $categories as $cat_key => $cat ) : ?>
-						<button type="button" class="gv-hub-filter" data-filter="<?php echo esc_attr( $cat_key ); ?>" role="tab" aria-selected="false">
+						<button type="button" class="gv-hub-filter <?php echo $cat_key === $default_filter ? 'is-active' : ''; ?>" data-filter="<?php echo esc_attr( $cat_key ); ?>" role="tab" aria-selected="<?php echo $cat_key === $default_filter ? 'true' : 'false'; ?>">
 							<span><?php echo esc_html( $cat['icon'] . ' ' . $cat['label'] ); ?></span>
 							<b><?php echo count( $grouped[ $cat_key ] ); ?></b>
 						</button>
@@ -881,7 +983,7 @@ function gv_hub_render_page() {
 		var searchInput    = document.getElementById('gv-hub-search-input');
 		var sortSelect     = document.getElementById('gv-hub-sort-select');
 		var emptyState     = document.getElementById('gv-hub-empty');
-		var activeFilter   = 'all';
+		var activeFilter   = '<?php echo esc_js( $default_filter ); ?>';
 
 		function applySort(){
 			var sortBy = sortSelect ? sortSelect.value : 'default';
@@ -949,6 +1051,9 @@ function gv_hub_render_page() {
 		if (sortSelect) {
 			sortSelect.addEventListener('change', applySort);
 		}
+
+		// اعمال فیلتر اولیه (اگر از روی منوی دسته‌بندی وارد شده باشیم)
+		applyFilters();
 	})();
 	</script>
 	<?php
