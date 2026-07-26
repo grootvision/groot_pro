@@ -310,7 +310,7 @@ add_action('wp_head', function () {
     #gv-topbar {
         <?php echo $sticky_css; ?>
         <?php echo $position_css; ?>
-        z-index: 99999;
+        z-index: 1;
         width: 100%;
         min-height: <?php echo esc_attr($s['height']); ?>px;
         background: linear-gradient(90deg, <?php echo esc_attr($s['bg_start']); ?>, <?php echo esc_attr($s['bg_end']); ?>);
@@ -340,8 +340,7 @@ add_action('wp_head', function () {
         background: rgba(255,255,255,0.12);
         border: none;
         color: <?php echo esc_attr($s['text_color']); ?>;
-        width: 16px;
-        height: 16px;
+        width: 41px;
         border-radius: 50%;
         font-size: 9px;
         line-height: 1;
