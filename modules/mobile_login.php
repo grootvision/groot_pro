@@ -134,6 +134,34 @@ function gv_mlogin_render_admin_page() {
 			</table>
 		</div>
 
+		<div class="gvml-card">
+			<h2>🔍 عیب‌یابی: جستجوی یک شماره‌ی خاص</h2>
+			<p style="font-size:12px;color:#666;">اگر کاربری می‌گوید «شماره‌ام ثبت نشده»، شماره‌اش را اینجا وارد کنید تا ببینیم دقیقاً زیر کدام متا و با چه مقداری در دیتابیس ذخیره شده (اگر اصلاً ذخیره شده باشد).</p>
+			<form method="get">
+				<input type="hidden" name="page" value="gv-mobile-login">
+				<input type="text" name="gv_debug_mobile" value="<?php echo isset( $_GET['gv_debug_mobile'] ) ? esc_attr( wp_unslash( $_GET['gv_debug_mobile'] ) ) : ''; ?>" placeholder="09xxxxxxxxx" style="padding:8px;border:1px solid #d1d5db;border-radius:8px;width:220px;">
+				<button type="submit" class="gvml-btn" style="padding:8px 16px;">جستجو</button>
+			</form>
+			<?php if ( ! empty( $_GET['gv_debug_mobile'] ) ) :
+				$debug_raw = sanitize_text_field( wp_unslash( $_GET['gv_debug_mobile'] ) );
+				$debug_norm = gv_mlogin_normalize_mobile( $debug_raw );
+				echo '<p style="font-size:12px;margin-top:10px;">فرمت نرمال‌شده: <code>' . esc_html( $debug_norm ) . '</code></p>';
+				$found_any = false;
+				foreach ( gv_mlogin_candidate_meta_keys() as $mk ) {
+					$hit = get_users( array( 'meta_key' => $mk, 'meta_value' => $debug_norm, 'number' => 5, 'fields' => 'all' ) );
+					if ( $hit ) {
+						$found_any = true;
+						foreach ( $hit as $u ) {
+							echo '<div class="gvml-note" style="margin-top:8px;">✅ پیدا شد در متا <code>' . esc_html( $mk ) . '</code> — کاربر: ' . esc_html( $u->user_login ) . ' (' . esc_html( $u->user_email ) . ')</div>';
+						}
+					}
+				}
+				if ( ! $found_any ) {
+					echo '<div class="gvml-note" style="margin-top:8px;background:#fee2e2;border-color:#fecaca;color:#991b1b;">❌ هیچ کاربری با این شماره در هیچ‌کدام از متاهای رایج پیدا نشد. یعنی این شماره اصلاً هنگام ثبت‌نام ذخیره نشده — به احتمال زیاد فرم ثبت‌نامی که کاربر استفاده کرده، فیلد موبایل این ماژول را نمایش نمی‌داده (مثلاً پاپ‌آپ اختصاصی قالب). لطفاً ثبت‌نام را از آدرس <code>/my-account/</code> امتحان کنید.</div>';
+				}
+			endif; ?>
+		</div>
+
 		<p style="font-size:11.5px;color:#888;text-align:center;margin-top:24px;">ساخته و توسعه‌یافته توسط <strong>Groot Vision</strong></p>
 	</div>
 	<?php
@@ -181,8 +209,31 @@ function gv_mlogin_is_valid_mobile( $normalized ) {
 }
 
 /* ==========================================================
+   مجبور کردن ووکامرس به نمایش فیلد «رمز عبور ثابت دلخواه کاربر»
+   ------------------------------------------------------------
+   به‌صورت پیش‌فرض، اگر گزینه‌ی «اجازه به کاربر برای انتخاب رمز
+   عبور» در تنظیمات ووکامرس خاموش باشد، ووکامرس اصلاً فیلد رمز را
+   نشان نمی‌دهد و به‌جایش یک رمز رندوم می‌سازد و فقط با ایمیل
+   می‌فرستد — که با هدف «ورود با موبایل» در تضاد است. وقتی این
+   ماژول فعال باشد، همیشه این گزینه را «خاموش» (یعنی خودِ کاربر
+   رمز را وارد کند) در نظر می‌گیریم، بدون اینکه چیزی در تنظیمات
+   واقعی ووکامرس تغییر کند.
+   ========================================================== */
+add_filter( 'pre_option_woocommerce_registration_generate_password', 'gv_mlogin_force_wc_password_field' );
+function gv_mlogin_force_wc_password_field( $value ) {
+	$s = gv_mlogin_get_settings();
+	if ( ! empty( $s['enabled'] ) ) {
+		return 'no';
+	}
+	return $value;
+}
+
+/* ==========================================================
    افزودن فیلد موبایل به فرم ثبت‌نام حساب کاربری ووکامرس
    (همان فرمی که قالب‌های وودمارت/بی‌تم روی صفحه‌ی «حساب کاربری من» نشان می‌دهند)
+   با فعال‌بودن ماژول، ووکامرس خودش فیلد «رمز عبور» را نشان می‌دهد
+   (به‌خاطر gv_mlogin_force_wc_password_field)؛ ما فقط فیلد موبایل
+   و تکرار رمز عبور را اضافه می‌کنیم.
    ========================================================== */
 add_action( 'woocommerce_register_form', 'gv_mlogin_add_field_to_wc_register' );
 function gv_mlogin_add_field_to_wc_register() {
@@ -194,6 +245,10 @@ function gv_mlogin_add_field_to_wc_register() {
 		<input type="tel" class="input-text" name="gv_mobile_number" id="gv_mobile_number"
 			   value="<?php echo isset( $_POST['gv_mobile_number'] ) ? esc_attr( wp_unslash( $_POST['gv_mobile_number'] ) ) : ''; ?>"
 			   placeholder="09xxxxxxxxx" autocomplete="tel" />
+	</p>
+	<p class="form-row form-row-wide">
+		<label for="gv_password_confirm">تکرار رمز عبور <span class="required">*</span></label>
+		<input type="password" class="input-text" name="gv_password_confirm" id="gv_password_confirm" autocomplete="new-password" />
 	</p>
 	<?php
 }
@@ -208,6 +263,14 @@ function gv_mlogin_add_field_to_wp_register() {
 		<input type="tel" name="gv_mobile_number" id="gv_mobile_number" class="input"
 			   value="<?php echo isset( $_POST['gv_mobile_number'] ) ? esc_attr( wp_unslash( $_POST['gv_mobile_number'] ) ) : ''; ?>"
 			   size="25" placeholder="09xxxxxxxxx" /></label>
+	</p>
+	<p>
+		<label for="gv_password">رمز عبور *<br>
+		<input type="password" name="password" id="gv_password" class="input" size="25" autocomplete="new-password" /></label>
+	</p>
+	<p>
+		<label for="gv_password_confirm">تکرار رمز عبور *<br>
+		<input type="password" name="gv_password_confirm" id="gv_password_confirm" class="input" size="25" autocomplete="new-password" /></label>
 	</p>
 	<?php
 }
@@ -231,6 +294,21 @@ function gv_mlogin_validate_wp_registration( $errors, $sanitized_user_login, $us
 
 function gv_mlogin_validate_mobile_common( $errors ) {
 	$s = gv_mlogin_get_settings();
+
+	/* --- اعتبارسنجی رمز عبور ثابت --- */
+	$password = isset( $_POST['password'] ) ? (string) wp_unslash( $_POST['password'] ) : '';
+	$confirm  = isset( $_POST['gv_password_confirm'] ) ? (string) wp_unslash( $_POST['gv_password_confirm'] ) : '';
+
+	if ( '' === $password ) {
+		$errors->add( 'gv_password_required', 'لطفاً یک رمز عبور برای حساب خود انتخاب کنید.' );
+	} elseif ( strlen( $password ) < 6 ) {
+		$errors->add( 'gv_password_short', 'رمز عبور باید حداقل ۶ کاراکتر باشد.' );
+	} elseif ( '' === $confirm ) {
+		$errors->add( 'gv_password_confirm_required', 'لطفاً تکرار رمز عبور را وارد کنید.' );
+	} elseif ( $password !== $confirm ) {
+		$errors->add( 'gv_password_mismatch', 'رمز عبور و تکرار آن یکسان نیستند.' );
+	}
+
 	$mobile_raw = isset( $_POST['gv_mobile_number'] ) ? wp_unslash( $_POST['gv_mobile_number'] ) : '';
 	$mobile     = gv_mlogin_normalize_mobile( $mobile_raw );
 
@@ -262,40 +340,71 @@ function gv_mlogin_save_mobile_after_wc_register( $customer_id ) {
 add_action( 'user_register', 'gv_mlogin_save_mobile_after_wp_register', 10, 1 );
 function gv_mlogin_save_mobile_after_wp_register( $user_id ) {
 	gv_mlogin_save_submitted_mobile( $user_id );
+
+	/* فرم پیش‌فرض ثبت‌نام وردپرس خودش همیشه یک رمز رندوم می‌سازد و
+	   فقط ایمیل می‌کند؛ چون کاربر خودش رمز ثابت انتخاب کرده،
+	   همان رمز را جایگزین رمز رندوم می‌کنیم. */
+	$s = gv_mlogin_get_settings();
+	if ( ! empty( $s['enabled'] ) && isset( $_POST['password'] ) ) {
+		$password = (string) wp_unslash( $_POST['password'] );
+		if ( strlen( $password ) >= 6 ) {
+			wp_set_password( $password, $user_id );
+		}
+	}
 }
 function gv_mlogin_save_submitted_mobile( $user_id ) {
 	if ( ! isset( $_POST['gv_mobile_number'] ) ) { return; }
 	$mobile = gv_mlogin_normalize_mobile( wp_unslash( $_POST['gv_mobile_number'] ) );
 	if ( $mobile && gv_mlogin_is_valid_mobile( $mobile ) ) {
-		update_user_meta( $user_id, GV_MLOGIN_META_KEY, $mobile );
+		foreach ( gv_mlogin_candidate_meta_keys() as $meta_key ) {
+			update_user_meta( $user_id, $meta_key, $mobile );
+		}
 	}
 }
 
 /* ==========================================================
-   پیدا کردن کاربر بر اساس شماره موبایل (متای billing_phone)
+   پیدا کردن کاربر بر اساس شماره موبایل
+   ------------------------------------------------------------
+   بعضی قالب‌ها (وودمارت/بی‌تم) در پاپ‌آپ ورود/ثبت‌نام خودشان از
+   قالب استاندارد ووکامرس استفاده نمی‌کنند و شماره موبایل را زیر
+   یک متای دیگر ذخیره می‌کنند. برای اطمینان، چند متای رایج را
+   بررسی می‌کنیم، نه فقط billing_phone.
    ========================================================== */
+function gv_mlogin_candidate_meta_keys() {
+	return array( GV_MLOGIN_META_KEY, 'phone', 'mobile', 'user_mobile', 'billing_mobile', 'digits_phone' );
+}
+
 function gv_mlogin_find_user_by_mobile( $normalized_mobile ) {
 	if ( ! $normalized_mobile ) { return null; }
-	$users = get_users( array(
-		'meta_key'   => GV_MLOGIN_META_KEY,
-		'meta_value' => $normalized_mobile,
-		'number'     => 1,
-		'fields'     => 'all',
-	) );
-	if ( ! empty( $users ) ) { return $users[0]; }
 
-	// اگر فرمت ذخیره‌شده دقیقاً یکی نبود (مثلاً بدون صفر اول)، یک تلاش اضافه
+	$candidates = array( $normalized_mobile );
 	$alt = ltrim( $normalized_mobile, '0' );
-	if ( $alt && $alt !== $normalized_mobile ) {
-		$users = get_users( array(
-			'meta_key'   => GV_MLOGIN_META_KEY,
-			'meta_value' => $alt,
-			'number'     => 1,
-			'fields'     => 'all',
-		) );
-		if ( ! empty( $users ) ) { return $users[0]; }
+	if ( $alt && $alt !== $normalized_mobile ) { $candidates[] = $alt; }
+	$candidates[] = '+98' . ltrim( $normalized_mobile, '0' );
+	$candidates[] = '98' . ltrim( $normalized_mobile, '0' );
+
+	foreach ( gv_mlogin_candidate_meta_keys() as $meta_key ) {
+		foreach ( $candidates as $value ) {
+			$users = get_users( array(
+				'meta_key'   => $meta_key,
+				'meta_value' => $value,
+				'number'     => 1,
+				'fields'     => 'all',
+			) );
+			if ( ! empty( $users ) ) { return $users[0]; }
+		}
 	}
+
+	// آخرین تلاش: شاید خودِ نام‌کاربری یا نمایشی، شماره موبایل باشد
+	$by_login = get_user_by( 'login', $normalized_mobile );
+	if ( $by_login ) { return $by_login; }
+
 	return null;
+}
+
+/* برای سازگاری با کد قبلی، تابع قدیمی همچنان موجود بماند */
+function gv_mlogin_find_user_by_mobile_legacy( $normalized_mobile ) {
+	return gv_mlogin_find_user_by_mobile( $normalized_mobile );
 }
 
 /* ==========================================================
