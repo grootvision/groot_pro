@@ -837,7 +837,7 @@ function gv_hub_render_page() {
 		.gv-hub-dot-off{background:#cbd5e1;}
 		.gv-hub-wrap[data-theme="dark"] .gv-hub-dot-off{background:#3a473e;}
 
-		.gv-hub-card h3{font-size:13px;margin:0 0 4px;color:var(--gv-text);font-weight:700;line-height:1.5;}
+		.gv-hub-card h3{font-size:13px;margin:0 0 4px;color:var(--gv-text);font-weight:700;line-height:1.5;font-family: 'Vazirmatn', Tahoma, sans-serif;}
 		.gv-hub-card p{font-size:11.3px;color:var(--gv-text-muted);line-height:1.75;margin:0 0 10px;
 			display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;}
 		.gv-hub-card-bottom{display:flex;align-items:center;justify-content:space-between;gap:6px;margin-top:auto;padding-top:8px;border-top:1px dashed var(--gv-border);}
