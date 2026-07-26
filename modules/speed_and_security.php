@@ -791,7 +791,7 @@ function gv_cap_render_field( $context = 'default' ) {
 	?>
 	<p class="gv-captcha-wrap" style="margin:14px 0;">
 		<label for="gv_captcha_answer_<?php echo esc_attr( $context ); ?>" style="display:block;font-weight:600;margin-bottom:6px;font-size:13px;">
-			🤖 برای اثبات انسان بودن، حاصل جمع زیر را وارد کنید:
+			🤖 برای اثبات ربات نبودن، حاصل جمع زیر را وارد کنید:
 		</label>
 		<span style="display:inline-flex;align-items:center;gap:8px;direction:ltr;">
 			<strong style="font-size:16px;"><?php echo esc_html( $a ); ?> + <?php echo esc_html( $b ); ?> =</strong>
