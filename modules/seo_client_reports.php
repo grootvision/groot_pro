@@ -1365,8 +1365,14 @@ function gv_sr_sanitize_employee_code( $code ) {
 	return substr( $code, 0, 40 );
 }
 function gv_sr_generate_employee_code( $name ) {
-	$base = sanitize_title( $name );
-	if ( '' === $base ) { $base = 'emp'; }
+	/* از sanitize_title() برای نام‌های فارسی استفاده نمی‌کنیم چون به‌خاطر
+	   وابستگی strtolower() به locale سرور، ممکن است بایت‌های UTF-8 خراب
+	   تولید کند و باعث خطای دیتابیس شود. به‌جایش مستقیم و امن فقط
+	   حروف/اعداد لاتین را نگه می‌داریم. */
+	$ascii = preg_replace( '/[^a-zA-Z0-9]/u', '', (string) $name );
+	$ascii = strtolower( $ascii ); // این‌جا چون فقط ASCII باقی مانده، امن است
+	$base  = '' !== $ascii ? substr( $ascii, 0, 20 ) : 'emp';
+
 	do {
 		$candidate = $base . '-' . wp_rand( 1000, 9999 );
 	} while ( gv_sr_get_employee_by_code( $candidate ) );
