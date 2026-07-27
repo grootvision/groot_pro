@@ -7,9 +7,11 @@ if ( ! defined( 'ABSPATH' ) ) { exit; }
  */
 
 define( 'GV_SR_NONCE',      'gv_sr_nonce_action' );
-define( 'GV_SR_DB_VERSION', '1.6' );
+define( 'GV_SR_DB_VERSION', '1.7' );
 define( 'GV_SR_PAGE_SLUG',  'gv-seo-reports' );
-define( 'GV_SR_EMP_COOKIE', 'gv_sr_employee_id' );
+define( 'GV_SR_EMP_COOKIE', 'gv_sr_employee_id' ); // قدیمی — دیگر برای احراز هویت استفاده نمی‌شود
+define( 'GV_SR_EMP_SESSION_COOKIE', 'gv_sr_emp_session' );
+define( 'GV_SR_EMP_AUTH_NONCE', 'gv_sr_emp_auth_nonce_action' );
 define( 'GV_SR_TEAM_COOKIE','gv_sr_team_token' );
 define( 'GV_SR_TEAM_NONCE', 'gv_sr_team_nonce_action' );
 define( 'GV_SR_PROJECTS_NONCE', 'gv_sr_projects_nonce_action' );
@@ -110,12 +112,15 @@ function gv_sr_maybe_install_db() {
 	dbDelta( "CREATE TABLE {$t_employees} (
 		id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
 		name VARCHAR(191) NOT NULL,
+		username VARCHAR(60) NULL,
+		password_hash VARCHAR(255) NULL,
 		hourly_rate BIGINT UNSIGNED NOT NULL DEFAULT 0,
 		global_code VARCHAR(40) NULL,
 		active TINYINT UNSIGNED NOT NULL DEFAULT 1,
 		created_at DATETIME NOT NULL,
 		PRIMARY KEY  (id),
-		KEY global_code (global_code)
+		KEY global_code (global_code),
+		UNIQUE KEY username (username)
 	) {$charset_collate};" );
 
 	/* ---- کارکرد روزانه (تایم‌شیت) کارمندان ---- */
@@ -279,6 +284,10 @@ function gv_sr_visibility_keys() {
 function gv_sr_default_visibility() {
 	$out = array();
 	foreach ( array_keys( gv_sr_visibility_keys() ) as $k ) { $out[ $k ] = 1; }
+	/* پیش‌فرض چیزی که مشتری باید ببیند: رشد صفحات، رشد کلمات کلیدی و فعالیت‌های انجام‌شده.
+	   ساعت کارکرد اطلاعات داخلی است و پیش‌فرض برای مشتری مخفی می‌ماند
+	   (مدیر می‌تواند در هر گزارش دستی روشنش کند). */
+	$out['show_hours'] = 0;
 	return $out;
 }
 function gv_sr_get_visibility( $report ) {
@@ -613,6 +622,110 @@ function gv_sr_save_keywords( $report_id, $rows ) {
 	}
 }
 
+/**
+ * لیست کلمات کلیدی‌ای که قبلاً برای یک پروژه ثبت شده‌اند، همراه با آخرین
+ * رتبه‌ی ثبت‌شده برای هرکدام — تا کارمند سری بعد فقط از لیست انتخاب کند
+ * و رتبه‌ی قبلی به‌صورت خودکار پر شود.
+ */
+function gv_sr_get_project_recent_keywords( $project_id ) {
+	$project_id = (int) $project_id;
+	if ( $project_id <= 0 ) { return array(); }
+
+	global $wpdb;
+	$t_kw = $wpdb->prefix . 'gv_sr_keywords';
+	$t_r  = $wpdb->prefix . 'gv_sr_reports';
+
+	$rows = $wpdb->get_results( $wpdb->prepare( // phpcs:ignore
+		"SELECT k.keyword, k.search_engine, k.page_url, k.curr_rank, r.period_end
+		 FROM {$t_kw} k INNER JOIN {$t_r} r ON r.id = k.report_id
+		 WHERE r.project_id = %d
+		 ORDER BY r.period_end ASC, k.id ASC",
+		$project_id
+	) );
+
+	$out = array();
+	foreach ( $rows as $row ) {
+		$out[ $row->keyword ] = array(
+			'keyword'       => $row->keyword,
+			'search_engine' => $row->search_engine,
+			'page_url'      => $row->page_url,
+			'last_rank'     => (int) $row->curr_rank,
+		);
+	}
+	return array_values( $out );
+}
+
+/** درج یا به‌روزرسانی یک ردیف کلمه کلیدی در گزارش (به‌جای حذف‌وجایگزینی کامل) */
+function gv_sr_upsert_keyword_row( $report_id, $data ) {
+	global $wpdb;
+	$t       = $wpdb->prefix . 'gv_sr_keywords';
+	$keyword = sanitize_text_field( $data['keyword'] );
+	if ( '' === trim( $keyword ) ) { return; }
+
+	$existing = $wpdb->get_row( $wpdb->prepare( // phpcs:ignore
+		"SELECT id FROM {$t} WHERE report_id = %d AND keyword = %s LIMIT 1",
+		(int) $report_id, $keyword
+	) );
+
+	$row = array(
+		'report_id'     => (int) $report_id,
+		'keyword'       => $keyword,
+		'search_engine' => sanitize_text_field( $data['search_engine'] ?: 'گوگل' ),
+		'page_url'      => esc_url_raw( $data['page_url'] ?? '' ),
+		'prev_rank'     => (int) ( $data['prev_rank'] ?? 0 ),
+		'curr_rank'     => (int) ( $data['curr_rank'] ?? 0 ),
+		'note'          => sanitize_text_field( $data['note'] ?? '' ),
+	);
+
+	if ( $existing ) {
+		$wpdb->update( $t, $row, array( 'id' => (int) $existing->id ) ); // phpcs:ignore
+	} else {
+		$row['sort_order'] = (int) $wpdb->get_var( $wpdb->prepare( "SELECT COUNT(*) FROM {$t} WHERE report_id = %d", (int) $report_id ) ); // phpcs:ignore
+		$wpdb->insert( $t, $row ); // phpcs:ignore
+	}
+}
+
+/** فقط اضافه‌کردن ردیف‌های رشد جدید، بدون حذف ردیف‌های قبلی گزارش */
+function gv_sr_add_growth_rows( $report_id, $rows ) {
+	if ( empty( $rows ) ) { return; }
+	global $wpdb;
+	$t = $wpdb->prefix . 'gv_sr_growth';
+	foreach ( $rows as $r ) {
+		if ( empty( trim( (string) $r['metric_label'] ) ) && empty( trim( (string) $r['page_title'] ) ) ) { continue; }
+		$wpdb->insert( $t, array( // phpcs:ignore
+			'report_id'    => (int) $report_id,
+			'page_title'   => sanitize_text_field( $r['page_title'] ?? '' ),
+			'page_url'     => esc_url_raw( $r['page_url'] ?? '' ),
+			'metric_label' => sanitize_text_field( $r['metric_label'] ?: 'رشد' ),
+			'before_value' => sanitize_text_field( $r['before_value'] ?? '' ),
+			'after_value'  => sanitize_text_field( $r['after_value'] ?? '' ),
+			'note'         => sanitize_text_field( $r['note'] ?? '' ),
+		) );
+	}
+}
+
+/** به‌روزرسانی جزئی کنترل نمایش یک گزارش (بدون دست‌زدن به بقیه‌ی فیلدهای گزارش) */
+function gv_sr_update_report_visibility( $report_id, $visibility ) {
+	global $wpdb;
+	$wpdb->update( // phpcs:ignore
+		$wpdb->prefix . 'gv_sr_reports',
+		array( 'visibility' => wp_json_encode( $visibility ), 'updated_at' => current_time( 'mysql' ) ),
+		array( 'id' => (int) $report_id )
+	);
+}
+
+/** مثل gv_sr_get_or_create_open_report ولی چیزی نمی‌سازد؛ فقط برای پیش‌نمایش تنظیمات نمایش استفاده می‌شود */
+function gv_sr_peek_open_report( $project ) {
+	if ( ! $project ) { return null; }
+	global $wpdb;
+	$t = $wpdb->prefix . 'gv_sr_reports';
+	list( $period_start, $period_end ) = gv_sr_current_jalali_month_bounds();
+	return $wpdb->get_row( $wpdb->prepare( // phpcs:ignore
+		"SELECT * FROM {$t} WHERE project_id = %d AND period_start = %s AND period_end = %s AND status = 'draft' LIMIT 1",
+		(int) $project->id, $period_start, $period_end
+	) );
+}
+
 /* ---------------- فعالیت‌ها / محتوا ---------------- */
 function gv_sr_get_tasks( $report_id, $orderby = 'work_date', $order = 'DESC' ) {
 	global $wpdb;
@@ -733,13 +846,22 @@ function gv_sr_recalc_report_hours( $report_id ) {
  * هم ردیف تایم‌شیت کارمند را می‌سازد/به‌روزرسانی می‌کند، هم ردیف «فعالیت» را
  * در گزارشِ باز همان مشتری/پروژه ثبت می‌کند تا کارمند مجبور به ورود دوباره نباشد.
  */
-function gv_sr_quick_log_work( $data, $timelog_id = 0 ) {
+/**
+ * نسخه‌ی چند-فعالیتی: یک ردیف کارکرد (تایم‌شیت) با یک تاریخ و یک بازه‌ی
+ * ساعتی مشترک، اما با چند فعالیت (هرکدام نوع + توضیح جدا) ثبت می‌شود.
+ * ساعت کل به‌طور مساوی بین فعالیت‌های آن روز تقسیم می‌شود تا جمع ساعت
+ * گزارش درست بماند.
+ *
+ * $activities = آرایه‌ای از ['type' => ..., 'note' => ...]
+ */
+function gv_sr_quick_log_work_multi( $data, $activities, $timelog_id = 0 ) {
 	global $wpdb;
-	$t_log = $wpdb->prefix . 'gv_sr_timelogs';
+	$t_log   = $wpdb->prefix . 'gv_sr_timelogs';
+	$t_tasks = $wpdb->prefix . 'gv_sr_tasks';
 
 	$project = gv_sr_get_project( (int) $data['project_id'] );
 
-	/* محاسبه ساعت بر اساس حالت انتخابی */
+	/* محاسبه ساعت کل بر اساس حالت انتخابی */
 	$mode = in_array( $data['entry_mode'], array( 'range', 'timer' ), true ) ? $data['entry_mode'] : 'manual';
 	if ( 'range' === $mode ) {
 		$hours = gv_sr_calc_range_hours( $data['start_time'], $data['end_time'] );
@@ -755,7 +877,14 @@ function gv_sr_quick_log_work( $data, $timelog_id = 0 ) {
 		$end   = null;
 	}
 
-	$existing_log = $timelog_id > 0 ? gv_sr_get_timelog( $timelog_id ) : null;
+	/* فعالیت‌های خالی را حذف کن؛ اگر هیچ‌کدام باقی نماند، یک ردیف پیش‌فرض بساز */
+	$activities = array_values( array_filter( $activities, function ( $a ) {
+		return '' !== trim( (string) ( $a['note'] ?? '' ) );
+	} ) );
+	if ( empty( $activities ) ) {
+		$activities = array( array( 'type' => 'other', 'note' => '' ) );
+	}
+	$per_activity_hours = round( $hours / count( $activities ), 2 );
 
 	$row = array(
 		'employee_id'   => (int) $data['employee_id'],
@@ -766,40 +895,47 @@ function gv_sr_quick_log_work( $data, $timelog_id = 0 ) {
 		'hours'         => $hours,
 		'client_name'   => $project ? sanitize_text_field( $project->client_name ) : '',
 		'project_id'    => $project ? (int) $project->id : 0,
-		'activity_type' => sanitize_key( $data['activity_type'] ?? 'other' ),
-		'note'          => sanitize_text_field( (string) ( $data['note'] ?? '' ) ),
+		'activity_type' => sanitize_key( $activities[0]['type'] ?? 'other' ),
+		'note'          => sanitize_text_field( (string) ( $activities[0]['note'] ?? '' ) ),
 	);
 
-	$report_id = $existing_log ? (int) $existing_log->report_id : 0;
-	$task_id   = $existing_log ? (int) $existing_log->task_id : 0;
+	$report_id     = 0;
+	$inserted_ids  = array();
+	$task_types    = array_keys( gv_sr_task_types() );
 
 	if ( $project ) {
 		$report    = gv_sr_get_or_create_open_report( $project );
 		$report_id = $report->id;
 
-		$t_tasks = $wpdb->prefix . 'gv_sr_tasks';
-		$task_row = array(
-			'report_id'         => $report_id,
-			'task_type'         => $row['activity_type'],
-			'title'             => $row['note'] !== '' ? $row['note'] : gv_sr_task_type_label( $row['activity_type'] ),
-			'url'               => '',
-			'target_keyword'    => '',
-			'work_date'         => $row['work_date'],
-			'hours'             => $hours,
-			'note'              => $row['note'],
-			'source_timelog_id' => $timelog_id > 0 ? $timelog_id : null,
-		);
+		/* اگر در حال ویرایش هستیم، فعالیت‌های قبلی همین ردیف کارکرد را حذف کن
+		   و دوباره طبق فهرست جدید بساز (تا فعالیت‌های حذف‌شده هم واقعاً حذف شوند). */
+		if ( $timelog_id > 0 ) {
+			$wpdb->delete( $t_tasks, array( 'source_timelog_id' => $timelog_id ) ); // phpcs:ignore
+		}
 
-		if ( $task_id > 0 ) {
-			$wpdb->update( $t_tasks, $task_row, array( 'id' => $task_id ) ); // phpcs:ignore
-		} else {
+		foreach ( $activities as $act ) {
+			$act_type = sanitize_key( $act['type'] ?? 'other' );
+			if ( ! in_array( $act_type, $task_types, true ) ) { $act_type = 'other'; }
+			$note = sanitize_text_field( (string) ( $act['note'] ?? '' ) );
+
+			$task_row = array(
+				'report_id'         => $report_id,
+				'task_type'         => $act_type,
+				'title'             => '' !== $note ? $note : gv_sr_task_type_label( $act_type ),
+				'url'               => '',
+				'target_keyword'    => '',
+				'work_date'         => $row['work_date'],
+				'hours'             => $per_activity_hours,
+				'note'              => $note,
+				'source_timelog_id' => $timelog_id > 0 ? $timelog_id : 0,
+			);
 			$wpdb->insert( $t_tasks, $task_row ); // phpcs:ignore
-			$task_id = (int) $wpdb->insert_id;
+			$inserted_ids[] = (int) $wpdb->insert_id;
 		}
 	}
 
 	$row['report_id'] = $report_id;
-	$row['task_id']   = $task_id;
+	$row['task_id']   = ! empty( $inserted_ids ) ? $inserted_ids[0] : 0;
 
 	if ( $timelog_id > 0 ) {
 		$wpdb->update( $t_log, $row, array( 'id' => $timelog_id ) ); // phpcs:ignore
@@ -807,14 +943,26 @@ function gv_sr_quick_log_work( $data, $timelog_id = 0 ) {
 		$row['created_at'] = current_time( 'mysql' );
 		$wpdb->insert( $t_log, $row ); // phpcs:ignore
 		$timelog_id = (int) $wpdb->insert_id;
-		if ( $task_id > 0 ) {
-			$wpdb->update( $t_tasks, array( 'source_timelog_id' => $timelog_id ), array( 'id' => $task_id ) ); // phpcs:ignore
+		if ( ! empty( $inserted_ids ) ) {
+			/* حالا که شناسه‌ی ردیف کارکرد مشخص شد، دقیقاً همین تسک‌های تازه‌ساخته (با شناسه‌ی مشخص) را به آن وصل کن */
+			$ids_sql = implode( ',', array_map( 'intval', $inserted_ids ) );
+			$wpdb->query( "UPDATE {$t_tasks} SET source_timelog_id = {$timelog_id} WHERE id IN ({$ids_sql})" ); // phpcs:ignore
+			$wpdb->update( $t_log, array( 'task_id' => $inserted_ids[0] ), array( 'id' => $timelog_id ) ); // phpcs:ignore
 		}
 	}
 
 	if ( $report_id > 0 ) { gv_sr_recalc_report_hours( $report_id ); }
 
 	return $timelog_id;
+}
+
+/** نسخه‌ی سازگار با کدهای قبلی (مثلاً تایمر زنده) که فقط یک فعالیت دارند */
+function gv_sr_quick_log_work( $data, $timelog_id = 0 ) {
+	return gv_sr_quick_log_work_multi(
+		$data,
+		array( array( 'type' => $data['activity_type'] ?? 'other', 'note' => $data['note'] ?? '' ) ),
+		$timelog_id
+	);
 }
 
 /** حذف یک ردیف کارکرد و در صورت وجود، حذف ردیف فعالیت مرتبط از گزارش */
@@ -1237,6 +1385,14 @@ function gv_sr_save_employee( $data, $employee_id = 0 ) {
 		$row['global_code'] = gv_sr_sanitize_employee_code( $data['global_code'] );
 	}
 
+	/* مدیر می‌تواند نام‌کاربری کارمند را تنظیم/تغییر بدهد، یا رمز عبورش را ریست کند */
+	if ( isset( $data['username'] ) && '' !== trim( (string) $data['username'] ) ) {
+		$row['username'] = sanitize_user( $data['username'] );
+	}
+	if ( ! empty( $data['password'] ) && strlen( $data['password'] ) >= 6 ) {
+		$row['password_hash'] = password_hash( $data['password'], PASSWORD_DEFAULT );
+	}
+
 	if ( $employee_id > 0 ) {
 		$wpdb->update( $t, $row, array( 'id' => $employee_id ) ); // phpcs:ignore
 		return $employee_id;
@@ -1250,16 +1406,84 @@ function gv_sr_save_employee( $data, $employee_id = 0 ) {
 	return (int) $wpdb->insert_id;
 }
 
-function gv_sr_current_employee_id() {
-	if ( empty( $_COOKIE[ GV_SR_EMP_COOKIE ] ) ) { return 0; }
-	$id = (int) $_COOKIE[ GV_SR_EMP_COOKIE ];
-	if ( $id <= 0 ) { return 0; }
-	$emp = gv_sr_get_employee( $id );
-	return ( $emp && (int) $emp->active === 1 ) ? $id : 0;
+function gv_sr_get_employee_by_username( $username ) {
+	global $wpdb;
+	$username = sanitize_user( $username );
+	if ( '' === $username ) { return null; }
+	$t = $wpdb->prefix . 'gv_sr_employees';
+	return $wpdb->get_row( $wpdb->prepare( "SELECT * FROM {$t} WHERE username = %s", $username ) ); // phpcs:ignore
 }
+
+/* ==========================================================================
+   ورود واقعی کارمند با یوزرنیم/رمز عبور (به‌جای انتخاب اسم از لیست)
+   ------------------------------------------------------------------------
+   هر کارمند یک نشست امن (توکن تصادفی + ترنزینت، دقیقاً مثل ورود مدیران)
+   دارد؛ کوکی قدیمی GV_SR_EMP_COOKIE دیگر برای احراز هویت استفاده نمی‌شود.
+   ========================================================================== */
+function gv_sr_employee_login( $username, $password ) {
+	$emp = gv_sr_get_employee_by_username( $username );
+	if ( ! $emp || (int) $emp->active !== 1 ) { return false; }
+	if ( empty( $emp->password_hash ) || ! password_verify( $password, $emp->password_hash ) ) { return false; }
+
+	$token = wp_generate_password( 40, false, false );
+	set_transient( 'gv_sr_emp_sess_' . $token, (int) $emp->id, 30 * DAY_IN_SECONDS );
+	setcookie( GV_SR_EMP_SESSION_COOKIE, $token, time() + ( 30 * DAY_IN_SECONDS ), COOKIEPATH, COOKIE_DOMAIN, is_ssl(), true );
+	$_COOKIE[ GV_SR_EMP_SESSION_COOKIE ] = $token;
+	return true;
+}
+
+function gv_sr_employee_logout() {
+	if ( ! empty( $_COOKIE[ GV_SR_EMP_SESSION_COOKIE ] ) ) {
+		delete_transient( 'gv_sr_emp_sess_' . sanitize_text_field( $_COOKIE[ GV_SR_EMP_SESSION_COOKIE ] ) );
+		setcookie( GV_SR_EMP_SESSION_COOKIE, '', time() - HOUR_IN_SECONDS, COOKIEPATH, COOKIE_DOMAIN, is_ssl(), true );
+		unset( $_COOKIE[ GV_SR_EMP_SESSION_COOKIE ] );
+	}
+}
+
+/** ثبت‌نام کارمند جدید با یوزرنیم/رمز عبور اختصاصی خودش، سپس ورود خودکار */
+function gv_sr_employee_register( $name, $username, $password ) {
+	$username = sanitize_user( $username );
+	if ( '' === trim( (string) $name ) || '' === $username || strlen( $password ) < 6 ) {
+		return new WP_Error( 'gv_sr_emp_reg_invalid', 'نام، نام‌کاربری و رمز عبور (حداقل ۶ کاراکتر) الزامی است.' );
+	}
+	if ( gv_sr_get_employee_by_username( $username ) ) {
+		return new WP_Error( 'gv_sr_emp_reg_taken', 'این نام‌کاربری قبلاً استفاده شده؛ نام‌کاربری دیگری انتخاب کنید.' );
+	}
+
+	global $wpdb;
+	$t   = $wpdb->prefix . 'gv_sr_employees';
+	$row = array(
+		'name'          => sanitize_text_field( $name ),
+		'username'      => $username,
+		'password_hash' => password_hash( $password, PASSWORD_DEFAULT ),
+		'hourly_rate'   => 0,
+		'global_code'   => gv_sr_generate_employee_code( $name ),
+		'active'        => 1,
+		'created_at'    => current_time( 'mysql' ),
+	);
+	$wpdb->insert( $t, $row ); // phpcs:ignore
+	$employee_id = (int) $wpdb->insert_id;
+
+	gv_sr_employee_login( $username, $password );
+	return $employee_id;
+}
+
+/** کارمندِ لاگین‌شده در همین درخواست را برمی‌گرداند (یا null) */
 function gv_sr_current_employee() {
-	$id = gv_sr_current_employee_id();
-	return $id > 0 ? gv_sr_get_employee( $id ) : null;
+	static $cached = null;
+	if ( null !== $cached ) { return false === $cached ? null : $cached; }
+	if ( empty( $_COOKIE[ GV_SR_EMP_SESSION_COOKIE ] ) ) { $cached = false; return null; }
+	$token       = sanitize_text_field( $_COOKIE[ GV_SR_EMP_SESSION_COOKIE ] );
+	$employee_id = (int) get_transient( 'gv_sr_emp_sess_' . $token );
+	if ( $employee_id <= 0 ) { $cached = false; return null; }
+	$emp = gv_sr_get_employee( $employee_id );
+	if ( ! $emp || (int) $emp->active !== 1 ) { $cached = false; return null; }
+	$cached = $emp;
+	return $emp;
+}
+function gv_sr_current_employee_id() {
+	$emp = gv_sr_current_employee();
+	return $emp ? (int) $emp->id : 0;
 }
 
 /* ==========================================================================
@@ -1624,25 +1848,53 @@ function gv_sr_handle_export_tasks_csv() {
 	exit;
 }
 
-/* ---------------- شناسایی کارمند (کوکی) ---------------- */
-add_action( 'admin_post_gv_sr_set_employee', 'gv_sr_handle_set_employee' );
-function gv_sr_handle_set_employee() {
+/* ---------------- ورود / ثبت‌نام / خروج واقعی کارمند (یوزرنیم + رمز عبور) ---------------- */
+function gv_sr_emp_auth_error_message( $code ) {
+	$map = array(
+		'login'    => 'نام‌کاربری یا رمز عبور اشتباه است.',
+		'register' => 'ثبت‌نام ناموفق بود؛ ممکن است این نام‌کاربری قبلاً استفاده شده باشد.',
+	);
+	return isset( $map[ $code ] ) ? $map[ $code ] : 'خطایی رخ داد.';
+}
+
+add_action( 'admin_post_gv_sr_employee_login', 'gv_sr_handle_employee_login' );
+function gv_sr_handle_employee_login() {
 	if ( ! current_user_can( 'manage_options' ) ) { wp_die( 'دسترسی ندارید.' ); }
-	check_admin_referer( GV_SR_NONCE );
+	check_admin_referer( GV_SR_EMP_AUTH_NONCE );
 
-	$emp_id = isset( $_POST['existing_employee_id'] ) ? (int) $_POST['existing_employee_id'] : 0;
-	$new_name = isset( $_POST['new_employee_name'] ) ? trim( wp_unslash( $_POST['new_employee_name'] ) ) : '';
-	$new_rate = isset( $_POST['new_employee_rate'] ) ? (int) $_POST['new_employee_rate'] : 0;
-	$shared_code = isset( $_POST['shared_employee_code'] ) ? trim( wp_unslash( $_POST['shared_employee_code'] ) ) : '';
+	$username = isset( $_POST['emp_username'] ) ? (string) $_POST['emp_username'] : '';
+	$password = isset( $_POST['emp_password'] ) ? (string) $_POST['emp_password'] : '';
+	$ok       = gv_sr_employee_login( $username, $password );
 
-	if ( '' !== $new_name ) {
-		$emp_id = gv_sr_save_employee( array( 'name' => $new_name, 'hourly_rate' => $new_rate, 'active' => 1, 'global_code' => $shared_code ) );
-	}
+	$redirect = wp_get_referer() ? wp_get_referer() : admin_url( 'admin.php?page=' . GV_SR_PAGE_SLUG . '&tab=my' );
+	$redirect = remove_query_arg( 'emp_err', $redirect );
+	if ( ! $ok ) { $redirect = add_query_arg( 'emp_err', 'login', $redirect ); }
+	wp_safe_redirect( $redirect );
+	exit;
+}
 
-	if ( $emp_id > 0 ) {
-		setcookie( GV_SR_EMP_COOKIE, (string) $emp_id, time() + ( 180 * DAY_IN_SECONDS ), COOKIEPATH, COOKIE_DOMAIN, is_ssl(), true );
-	}
+add_action( 'admin_post_gv_sr_employee_register', 'gv_sr_handle_employee_register' );
+function gv_sr_handle_employee_register() {
+	if ( ! current_user_can( 'manage_options' ) ) { wp_die( 'دسترسی ندارید.' ); }
+	check_admin_referer( GV_SR_EMP_AUTH_NONCE );
 
+	$name     = isset( $_POST['reg_name'] ) ? wp_unslash( $_POST['reg_name'] ) : '';
+	$username = isset( $_POST['reg_username'] ) ? wp_unslash( $_POST['reg_username'] ) : '';
+	$password = isset( $_POST['reg_password'] ) ? (string) $_POST['reg_password'] : '';
+
+	$result   = gv_sr_employee_register( $name, $username, $password );
+	$redirect = wp_get_referer() ? wp_get_referer() : admin_url( 'admin.php?page=' . GV_SR_PAGE_SLUG . '&tab=my' );
+	$redirect = remove_query_arg( 'emp_err', $redirect );
+	if ( is_wp_error( $result ) ) { $redirect = add_query_arg( 'emp_err', 'register', $redirect ); }
+	wp_safe_redirect( $redirect );
+	exit;
+}
+
+add_action( 'admin_post_gv_sr_employee_logout', 'gv_sr_handle_employee_logout' );
+function gv_sr_handle_employee_logout() {
+	if ( ! current_user_can( 'manage_options' ) ) { wp_die( 'دسترسی ندارید.' ); }
+	check_admin_referer( GV_SR_EMP_AUTH_NONCE );
+	gv_sr_employee_logout();
 	wp_safe_redirect( wp_get_referer() ? wp_get_referer() : admin_url( 'admin.php?page=' . GV_SR_PAGE_SLUG . '&tab=my' ) );
 	exit;
 }
@@ -1722,15 +1974,13 @@ function gv_sr_handle_save_timelog() {
 	}
 
 	$data = array(
-		'employee_id'   => $employee_id,
-		'work_date'     => gv_sr_read_jalali_post( 'log_date' ),
-		'entry_mode'    => $entry_mode,
-		'start_time'    => $start_time,
-		'end_time'      => $end_time,
-		'hours'         => $hours,
-		'project_id'    => isset( $_POST['project_id'] ) ? (int) $_POST['project_id'] : 0,
-		'activity_type' => isset( $_POST['activity_type'] ) ? sanitize_key( $_POST['activity_type'] ) : 'other',
-		'note'          => isset( $_POST['note'] ) ? wp_unslash( $_POST['note'] ) : '',
+		'employee_id' => $employee_id,
+		'work_date'   => gv_sr_read_jalali_post( 'log_date' ),
+		'entry_mode'  => $entry_mode,
+		'start_time'  => $start_time,
+		'end_time'    => $end_time,
+		'hours'       => $hours,
+		'project_id'  => isset( $_POST['project_id'] ) ? (int) $_POST['project_id'] : 0,
 	);
 
 	if ( empty( $data['project_id'] ) ) {
@@ -1738,7 +1988,65 @@ function gv_sr_handle_save_timelog() {
 		exit;
 	}
 
-	gv_sr_quick_log_work( $data, $timelog_id );
+	/* --- چند فعالیت برای همین یک بازه‌ی زمانی --- */
+	$activities = array();
+	if ( ! empty( $_POST['activity_type'] ) && is_array( $_POST['activity_type'] ) ) {
+		foreach ( $_POST['activity_type'] as $i => $type ) {
+			$activities[] = array(
+				'type' => wp_unslash( $type ),
+				'note' => wp_unslash( $_POST['activity_note'][ $i ] ?? '' ),
+			);
+		}
+	}
+
+	$timelog_id = gv_sr_quick_log_work_multi( $data, $activities, $timelog_id );
+
+	/* --- کلمات کلیدی (درج/به‌روزرسانی، بدون حذف کلمات قبلی گزارش) --- */
+	$project = gv_sr_get_project( $data['project_id'] );
+	$report  = $project ? gv_sr_get_or_create_open_report( $project ) : null;
+
+	if ( $report && ! empty( $_POST['kw_keyword'] ) && is_array( $_POST['kw_keyword'] ) ) {
+		foreach ( $_POST['kw_keyword'] as $i => $keyword ) {
+			if ( '' === trim( (string) $keyword ) ) { continue; }
+			gv_sr_upsert_keyword_row( $report->id, array(
+				'keyword'       => wp_unslash( $keyword ),
+				'search_engine' => wp_unslash( $_POST['kw_engine'][ $i ] ?? 'گوگل' ),
+				'page_url'      => wp_unslash( $_POST['kw_url'][ $i ] ?? '' ),
+				'prev_rank'     => $_POST['kw_prev'][ $i ] ?? 0,
+				'curr_rank'     => $_POST['kw_curr'][ $i ] ?? 0,
+				'note'          => wp_unslash( $_POST['kw_note'][ $i ] ?? '' ),
+			) );
+		}
+	}
+
+	/* --- رشد صفحات (فقط اضافه‌کردن) --- */
+	if ( $report && ! empty( $_POST['growth_metric'] ) && is_array( $_POST['growth_metric'] ) ) {
+		$growth_rows = array();
+		foreach ( $_POST['growth_metric'] as $i => $metric ) {
+			$title = wp_unslash( $_POST['growth_title'][ $i ] ?? '' );
+			$before = wp_unslash( $_POST['growth_before'][ $i ] ?? '' );
+			$after  = wp_unslash( $_POST['growth_after'][ $i ] ?? '' );
+			if ( '' === trim( (string) $title ) && '' === trim( (string) $before ) && '' === trim( (string) $after ) ) { continue; }
+			$growth_rows[] = array(
+				'page_title'   => $title,
+				'page_url'     => wp_unslash( $_POST['growth_url'][ $i ] ?? '' ),
+				'metric_label' => wp_unslash( $metric ),
+				'before_value' => $before,
+				'after_value'  => $after,
+				'note'         => wp_unslash( $_POST['growth_note'][ $i ] ?? '' ),
+			);
+		}
+		gv_sr_add_growth_rows( $report->id, $growth_rows );
+	}
+
+	/* --- کنترل نمایش برای مشتری (روی همین گزارش باز) --- */
+	if ( $report ) {
+		$visibility = array();
+		foreach ( array_keys( gv_sr_visibility_keys() ) as $key ) {
+			$visibility[ $key ] = isset( $_POST[ $key ] ) ? 1 : 0;
+		}
+		gv_sr_update_report_visibility( $report->id, $visibility );
+	}
 
 	wp_safe_redirect( admin_url( 'admin.php?page=' . GV_SR_PAGE_SLUG . '&tab=' . $return_tab . '&saved_log=1' ) );
 	exit;
@@ -1786,8 +2094,10 @@ function gv_sr_handle_save_employee() {
 
 	$employee_id = isset( $_POST['employee_id'] ) ? (int) $_POST['employee_id'] : 0;
 	$data = array(
-		'name'   => isset( $_POST['name'] ) ? wp_unslash( $_POST['name'] ) : '',
-		'active' => isset( $_POST['active'] ) ? 1 : 0,
+		'name'     => isset( $_POST['name'] ) ? wp_unslash( $_POST['name'] ) : '',
+		'active'   => isset( $_POST['active'] ) ? 1 : 0,
+		'username' => isset( $_POST['username'] ) ? wp_unslash( $_POST['username'] ) : '',
+		'password' => isset( $_POST['reset_password'] ) ? (string) $_POST['reset_password'] : '',
 	);
 	/* نرخ ساعتی، اطلاعات حقوقی است و فقط مدیر اصلی اجازه تغییرش را دارد */
 	if ( gv_sr_is_super_admin() ) {
@@ -1948,24 +2258,41 @@ function gv_sr_render_top_bar() {
 	$emp = gv_sr_current_employee();
 
 	if ( ! $emp ) {
-		$employees = gv_sr_get_employees( true );
+		if ( isset( $_GET['emp_err'] ) ) {
+			echo '<div class="gvsr-notice" style="background:#fee2e2;color:#b91c1c;border-color:#fca5a5;">' . esc_html( gv_sr_emp_auth_error_message( $_GET['emp_err'] ) ) . '</div>';
+		}
 		?>
 		<div class="gvsr-topbar">
-			<div class="gvsr-topbar-row">
-				<span class="gvsr-topbar-idle">👋 برای ثبت کارکرد، اول مشخص کنید چه کسی هستید:</span>
-				<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" class="gvsr-topbar-form">
-					<?php wp_nonce_field( GV_SR_NONCE ); ?>
-					<input type="hidden" name="action" value="gv_sr_set_employee">
-					<select name="existing_employee_id" class="gvsr-select" style="min-width:150px;">
-						<option value="0">— انتخاب از لیست —</option>
-						<?php foreach ( $employees as $e ) : ?>
-							<option value="<?php echo esc_attr( $e->id ); ?>"><?php echo esc_html( $e->name ); ?></option>
-						<?php endforeach; ?>
-					</select>
-					<span style="color:var(--gv-muted);font-size:11.5px;">یا</span>
-					<input type="text" name="new_employee_name" placeholder="نام کارمند جدید...">
-					<button type="submit" class="gvsr-topbar-btn-start">تایید</button>
+			<div class="gvsr-topbar-row" style="align-items:flex-start;flex-wrap:wrap;">
+				<span class="gvsr-topbar-idle" style="margin-top:8px;">👋 برای ثبت کارکرد، وارد حساب کارمندی خودتان شوید:</span>
+
+				<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" class="gvsr-topbar-form" style="margin-inline-start:auto;">
+					<?php wp_nonce_field( GV_SR_EMP_AUTH_NONCE ); ?>
+					<input type="hidden" name="action" value="gv_sr_employee_login">
+					<input type="text" name="emp_username" placeholder="نام‌کاربری" required dir="ltr" style="min-width:120px;">
+					<input type="password" name="emp_password" placeholder="رمز عبور" required dir="ltr" style="min-width:120px;">
+					<button type="submit" class="gvsr-topbar-btn-start">ورود</button>
 				</form>
+
+				<details class="gvsr-topbar-switch">
+					<summary>کارمند جدیدم / ثبت‌نام</summary>
+					<div class="gvsr-topbar-switch-panel">
+						<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>">
+							<?php wp_nonce_field( GV_SR_EMP_AUTH_NONCE ); ?>
+							<input type="hidden" name="action" value="gv_sr_employee_register">
+							<label style="display:block;font-size:11.8px;font-weight:700;color:var(--gv-ink-soft);margin-bottom:8px;">نام و نام‌خانوادگی
+								<input type="text" name="reg_name" required style="width:100%;margin-top:6px;padding:8px 10px;border:1px solid var(--gv-border);border-radius:8px;">
+							</label>
+							<label style="display:block;font-size:11.8px;font-weight:700;color:var(--gv-ink-soft);margin-bottom:8px;">نام‌کاربری (برای ورودهای بعدی)
+								<input type="text" name="reg_username" required dir="ltr" style="width:100%;margin-top:6px;padding:8px 10px;border:1px solid var(--gv-border);border-radius:8px;">
+							</label>
+							<label style="display:block;font-size:11.8px;font-weight:700;color:var(--gv-ink-soft);margin-bottom:10px;">رمز عبور (حداقل ۶ کاراکتر)
+								<input type="password" name="reg_password" required minlength="6" dir="ltr" style="width:100%;margin-top:6px;padding:8px 10px;border:1px solid var(--gv-border);border-radius:8px;">
+							</label>
+							<button type="submit" class="gvsr-topbar-btn-start" style="width:100%;justify-content:center;">ساخت حساب و ورود</button>
+						</form>
+					</div>
+				</details>
 			</div>
 		</div>
 		<?php
@@ -1973,7 +2300,6 @@ function gv_sr_render_top_bar() {
 	}
 
 	$active_timer = gv_sr_get_active_timer( $emp->id );
-	$employees    = gv_sr_get_employees( true );
 	$my_projects  = gv_sr_get_employee_projects( $emp->id );
 	?>
 	<div class="gvsr-topbar">
@@ -2006,27 +2332,11 @@ function gv_sr_render_top_bar() {
 				</form>
 			<?php endif; ?>
 
-			<details class="gvsr-topbar-switch">
-				<summary>تغییر کارمند</summary>
-				<div class="gvsr-topbar-switch-panel">
-					<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>">
-						<?php wp_nonce_field( GV_SR_NONCE ); ?>
-						<input type="hidden" name="action" value="gv_sr_set_employee">
-						<label style="display:block;font-size:11.8px;font-weight:700;color:var(--gv-ink-soft);margin-bottom:8px;">من یکی از این افرادم:
-							<select name="existing_employee_id" class="gvsr-select" style="width:100%;margin-top:6px;">
-								<option value="0">— انتخاب کنید —</option>
-								<?php foreach ( $employees as $e ) : ?>
-									<option value="<?php echo esc_attr( $e->id ); ?>" <?php selected( (int) $emp->id === (int) $e->id ); ?>><?php echo esc_html( $e->name ); ?></option>
-								<?php endforeach; ?>
-							</select>
-						</label>
-						<label style="display:block;font-size:11.8px;font-weight:700;color:var(--gv-ink-soft);margin-bottom:10px;">یا کارمند جدید:
-							<input type="text" name="new_employee_name" placeholder="نام..." style="width:100%;margin-top:6px;padding:8px 10px;border:1px solid var(--gv-border);border-radius:8px;">
-						</label>
-						<button type="submit" class="gvsr-topbar-btn-start" style="width:100%;justify-content:center;">تایید</button>
-					</form>
-				</div>
-			</details>
+			<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" style="margin:0;">
+				<?php wp_nonce_field( GV_SR_EMP_AUTH_NONCE ); ?>
+				<input type="hidden" name="action" value="gv_sr_employee_logout">
+				<button type="submit" class="gvsr-btn-ghost" style="font-size:11.5px;padding:6px 12px;" <?php echo $active_timer ? 'onclick="return confirm(\'تایمر شما هنوز روشن است. مطمئنید می‌خواهید خارج شوید؟\');"' : ''; ?>>🚪 خروج</button>
+			</form>
 		</div>
 	</div>
 
@@ -2356,7 +2666,7 @@ function gv_sr_render_quick_report_tab() {
 	$emp = gv_sr_current_employee();
 
 	if ( ! $emp ) {
-		echo '<div class="gvsr-empty">برای ثبت گزارش، ابتدا از نوار بالای صفحه خودتان را به‌عنوان کارمند مشخص کنید.</div>';
+		echo '<div class="gvsr-empty">برای ثبت گزارش، ابتدا از نوار بالای صفحه وارد حساب کارمندی خودتان شوید.</div>';
 		return;
 	}
 
@@ -2369,10 +2679,18 @@ function gv_sr_render_quick_report_tab() {
 		return;
 	}
 
-	$editing = null;
+	$editing        = null;
+	$editing_tasks  = array();
 	if ( isset( $_GET['edit_log'] ) ) {
 		$maybe = gv_sr_get_timelog( (int) $_GET['edit_log'] );
-		if ( $maybe && (int) $maybe->employee_id === (int) $emp->id ) { $editing = $maybe; }
+		if ( $maybe && (int) $maybe->employee_id === (int) $emp->id ) {
+			$editing       = $maybe;
+			global $wpdb;
+			$editing_tasks = $wpdb->get_results( $wpdb->prepare( // phpcs:ignore
+				'SELECT * FROM ' . $wpdb->prefix . 'gv_sr_tasks WHERE source_timelog_id = %d ORDER BY id ASC',
+				(int) $editing->id
+			) );
+		}
 	}
 
 	if ( isset( $_GET['saved_log'] ) ) { echo '<div class="gvsr-notice">✅ گزارش ثبت شد و به‌صورت خودکار در شیت «کارکرد من» شما هم اضافه شد.</div>'; }
@@ -2389,99 +2707,205 @@ function gv_sr_render_quick_report_tab() {
 		$def_start_h = $def_end_h;
 		$def_start_m = $def_end_m;
 	}
+
+	$selected_project_id = $editing ? (int) $editing->project_id : ( isset( $my_projects[0] ) ? (int) $my_projects[0]->id : 0 );
+
+	/* دیکشنری کلمات کلیدی قبلی هر پروژه (برای انتخاب سریع + پرکردن خودکار رتبه‌ی قبلی) */
+	$kw_memory_by_project = array();
+	foreach ( $my_projects as $pj ) {
+		$kw_memory_by_project[ $pj->id ] = gv_sr_get_project_recent_keywords( $pj->id );
+	}
+
+	/* پیش‌مقداردهی کنترل نمایش از گزارشِ باز فعلی (اگر وجود دارد)، وگرنه پیش‌فرض افزونه */
+	$peek_project  = $selected_project_id ? gv_sr_get_project( $selected_project_id ) : null;
+	$peek_report   = $peek_project ? gv_sr_peek_open_report( $peek_project ) : null;
+	$visibility    = $peek_report ? gv_sr_get_visibility( $peek_report ) : gv_sr_default_visibility();
+	$task_types    = gv_sr_task_types();
 	?>
-	<div class="gvsr-quicklog-wrap">
-		<div class="gvsr-report-card gvsr-quicklog-card">
-			<h3><?php echo $editing ? '✏️ ویرایش گزارش ثبت‌شده' : '⚡ ثبت گزارش جدید'; ?> <span class="gvsr-hint-inline" style="margin-inline-start:auto;font-weight:400;">کمتر از ۳ دقیقه</span></h3>
+	<div class="gvsr-quicklog-wrap" style="grid-template-columns:1fr 220px;">
+		<div>
+			<div class="gvsr-report-card gvsr-quicklog-card">
+				<h3><?php echo $editing ? '✏️ ویرایش گزارش ثبت‌شده' : '⚡ ثبت گزارش جدید'; ?></h3>
 
-			<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" class="gvsr-quicklog-form" id="gvsr-quicklog-form">
-				<?php wp_nonce_field( GV_SR_NONCE ); ?>
-				<input type="hidden" name="action" value="gv_sr_save_timelog">
-				<input type="hidden" name="return_tab" value="quickreport">
-				<input type="hidden" name="timelog_id" value="<?php echo esc_attr( $editing ? $editing->id : 0 ); ?>">
-				<input type="hidden" name="entry_mode" value="range">
+				<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" class="gvsr-quicklog-form" id="gvsr-quicklog-form">
+					<?php wp_nonce_field( GV_SR_NONCE ); ?>
+					<input type="hidden" name="action" value="gv_sr_save_timelog">
+					<input type="hidden" name="return_tab" value="quickreport">
+					<input type="hidden" name="timelog_id" value="<?php echo esc_attr( $editing ? $editing->id : 0 ); ?>">
+					<input type="hidden" name="entry_mode" value="range">
 
-				<!-- گام ۱: پروژه -->
-				<div class="gvsr-ql-step">
-					<span class="gvsr-ql-step-num">۱</span>
-					<div class="gvsr-ql-step-body">
-						<label class="gvsr-ql-label">این گزارش برای کدام پروژه/مشتری است؟</label>
-						<select name="project_id" class="gvsr-select gvsr-ql-project-select" required>
-							<option value="">— انتخاب پروژه —</option>
-							<?php foreach ( $my_projects as $pj ) : ?>
-								<option value="<?php echo esc_attr( $pj->id ); ?>" <?php selected( $editing ? (int) $editing->project_id : 0, (int) $pj->id ); ?>>
-									<?php echo esc_html( $pj->title . ' — ' . $pj->client_name ); ?>
-								</option>
-							<?php endforeach; ?>
-						</select>
-					</div>
-				</div>
-
-				<!-- گام ۲: نوع فعالیت (کارت‌های تصویری، بدون تایپ دستی) -->
-				<div class="gvsr-ql-step">
-					<span class="gvsr-ql-step-num">۲</span>
-					<div class="gvsr-ql-step-body">
-						<label class="gvsr-ql-label">چه کاری انجام دادید؟</label>
-						<div class="gvsr-activity-grid">
-							<?php $sel_activity = $editing ? $editing->activity_type : ''; $i = 0; foreach ( gv_sr_task_types() as $key => $info ) : $i++; ?>
-								<label class="gvsr-activity-card" style="--gv-act-color:<?php echo esc_attr( $info['color'] ); ?>;">
-									<input type="radio" name="activity_type" value="<?php echo esc_attr( $key ); ?>" <?php checked( $sel_activity ? $sel_activity === $key : 1 === $i ); ?> required>
-									<span class="gvsr-activity-icon"><?php echo esc_html( $info['icon'] ); ?></span>
-									<span class="gvsr-activity-label"><?php echo esc_html( $info['label'] ); ?></span>
-								</label>
-							<?php endforeach; ?>
+					<!-- گام ۱: پروژه -->
+					<div class="gvsr-ql-step">
+						<span class="gvsr-ql-step-num">۱</span>
+						<div class="gvsr-ql-step-body">
+							<label class="gvsr-ql-label">این گزارش برای کدام پروژه/مشتری است؟</label>
+							<select name="project_id" id="gvsr-ql-project" class="gvsr-select gvsr-ql-project-select" required>
+								<option value="">— انتخاب پروژه —</option>
+								<?php foreach ( $my_projects as $pj ) : ?>
+									<option value="<?php echo esc_attr( $pj->id ); ?>" <?php selected( $selected_project_id, (int) $pj->id ); ?>>
+										<?php echo esc_html( $pj->title . ' — ' . $pj->client_name ); ?>
+									</option>
+								<?php endforeach; ?>
+							</select>
 						</div>
 					</div>
-				</div>
 
-				<!-- گام ۳: توضیح کوتاه -->
-				<div class="gvsr-ql-step">
-					<span class="gvsr-ql-step-num">۳</span>
-					<div class="gvsr-ql-step-body">
-						<label class="gvsr-ql-label">توضیح کوتاه (همین برای مشتری هم نمایش داده می‌شود)</label>
-						<input type="text" name="note" class="gvsr-ql-note" required
-							value="<?php echo esc_attr( $editing ? $editing->note : '' ); ?>"
-							placeholder="مثلاً: نوشتن مقاله «۱۰ ترفند سئو» برای وبلاگ">
+					<!-- گام ۲: فعالیت‌های امروز (چند ردیف؛ می‌تواند چند کار مختلف باشد) -->
+					<div class="gvsr-ql-step">
+						<span class="gvsr-ql-step-num">۲</span>
+						<div class="gvsr-ql-step-body">
+							<label class="gvsr-ql-label">چه کارهایی انجام دادید؟ (برای هر کار جدا یک ردیف اضافه کنید)</label>
+							<table class="gvsr-repeater" id="gvsr-repeater-activity">
+								<thead><tr><th style="width:32%;">نوع فعالیت</th><th>توضیح کوتاه (برای مشتری هم نمایش داده می‌شود)</th><th style="width:34px;"></th></tr></thead>
+								<tbody>
+									<?php
+									$act_rows = array();
+									if ( $editing && $editing_tasks ) {
+										foreach ( $editing_tasks as $t ) { $act_rows[] = array( 'type' => $t->task_type, 'note' => $t->note ? $t->note : $t->title ); }
+									} elseif ( $editing ) {
+										$act_rows[] = array( 'type' => $editing->activity_type, 'note' => $editing->note );
+									}
+									if ( empty( $act_rows ) ) { $act_rows[] = array( 'type' => 'content_new', 'note' => '' ); }
+									foreach ( $act_rows as $ar ) :
+									?>
+									<tr>
+										<td>
+											<select name="activity_type[]" class="gvsr-select">
+												<?php foreach ( $task_types as $key => $info ) : ?>
+													<option value="<?php echo esc_attr( $key ); ?>" <?php selected( $ar['type'], $key ); ?>><?php echo esc_html( $info['icon'] . ' ' . $info['label'] ); ?></option>
+												<?php endforeach; ?>
+											</select>
+										</td>
+										<td><input type="text" name="activity_note[]" value="<?php echo esc_attr( $ar['note'] ); ?>" placeholder="مثلاً: نوشتن مقاله «۱۰ ترفند سئو»"></td>
+										<td><button type="button" class="gvsr-row-del">✕</button></td>
+									</tr>
+									<?php endforeach; ?>
+								</tbody>
+							</table>
+							<button type="button" class="gvsr-btn-add" data-target="gvsr-repeater-activity">➕ افزودن فعالیت دیگر</button>
+							<p class="gvsr-hint" style="margin-top:6px;">ساعتی که پایین‌تر وارد می‌کنید، ساعت کل کاری امروز است و بین همه‌ی فعالیت‌های بالا تقسیم می‌شود.</p>
+						</div>
 					</div>
-				</div>
 
-				<!-- گام ۴: ساعت شروع و پایان (عدد ساعت + عدد دقیقه) — مدت‌زمان خودکار محاسبه می‌شود -->
-				<div class="gvsr-ql-step">
-					<span class="gvsr-ql-step-num">۴</span>
-					<div class="gvsr-ql-step-body">
-						<label class="gvsr-ql-label">چه ساعتی شروع و چه ساعتی تمام کردید؟</label>
-						<div class="gvsr-time-range-row">
-							<div class="gvsr-time-box">
-								<span class="gvsr-time-box-label">شروع</span>
-								<input type="number" name="start_h" min="0" max="23" class="gvsr-time-input" value="<?php echo esc_attr( $def_start_h ); ?>" placeholder="ساعت">
-								<span class="gvsr-time-colon">:</span>
-								<input type="number" name="start_m" min="0" max="59" class="gvsr-time-input" value="<?php echo esc_attr( $def_start_m ); ?>" placeholder="دقیقه">
+					<!-- گام ۳: ساعت شروع و پایان -->
+					<div class="gvsr-ql-step">
+						<span class="gvsr-ql-step-num">۳</span>
+						<div class="gvsr-ql-step-body">
+							<label class="gvsr-ql-label">چه ساعتی شروع و چه ساعتی تمام کردید؟</label>
+							<div class="gvsr-time-range-row">
+								<div class="gvsr-time-box">
+									<span class="gvsr-time-box-label">شروع</span>
+									<input type="number" name="start_h" min="0" max="23" class="gvsr-time-input" value="<?php echo esc_attr( $def_start_h ); ?>" placeholder="ساعت">
+									<span class="gvsr-time-colon">:</span>
+									<input type="number" name="start_m" min="0" max="59" class="gvsr-time-input" value="<?php echo esc_attr( $def_start_m ); ?>" placeholder="دقیقه">
+								</div>
+								<span class="gvsr-time-arrow">←</span>
+								<div class="gvsr-time-box">
+									<span class="gvsr-time-box-label">پایان</span>
+									<input type="number" name="end_h" min="0" max="23" class="gvsr-time-input" value="<?php echo esc_attr( $def_end_h ); ?>" placeholder="ساعت">
+									<span class="gvsr-time-colon">:</span>
+									<input type="number" name="end_m" min="0" max="59" class="gvsr-time-input" value="<?php echo esc_attr( $def_end_m ); ?>" placeholder="دقیقه">
+								</div>
+								<span class="gvsr-time-duration" id="gvsr-time-duration-badge">—</span>
 							</div>
-							<span class="gvsr-time-arrow">←</span>
-							<div class="gvsr-time-box">
-								<span class="gvsr-time-box-label">پایان</span>
-								<input type="number" name="end_h" min="0" max="23" class="gvsr-time-input" value="<?php echo esc_attr( $def_end_h ); ?>" placeholder="ساعت">
-								<span class="gvsr-time-colon">:</span>
-								<input type="number" name="end_m" min="0" max="59" class="gvsr-time-input" value="<?php echo esc_attr( $def_end_m ); ?>" placeholder="دقیقه">
-							</div>
-							<span class="gvsr-time-duration" id="gvsr-time-duration-badge">—</span>
-						</div>
 
-						<div class="gvsr-ql-date-row">
-							<span class="gvsr-ql-label" style="margin:0;">تاریخ:</span>
-							<?php echo gv_sr_jalali_select_fields( 'log_date', $editing ? $editing->work_date : '', true ); ?>
-							<span class="gvsr-ql-today-badge">پیش‌فرض: امروز — در صورت نیاز عوض کنید</span>
+							<div class="gvsr-ql-date-row">
+								<span class="gvsr-ql-label" style="margin:0;">تاریخ:</span>
+								<?php echo gv_sr_jalali_select_fields( 'log_date', $editing ? $editing->work_date : '', true ); ?>
+								<span class="gvsr-ql-today-badge">پیش‌فرض: امروز — در صورت نیاز عوض کنید</span>
+							</div>
 						</div>
 					</div>
-				</div>
 
-				<div class="gvsr-form-actions" style="margin-top:6px;">
-					<button type="submit" class="gvsr-btn-export gvsr-ql-submit"><?php echo $editing ? '💾 بروزرسانی گزارش' : '✅ ثبت گزارش'; ?></button>
-					<?php if ( $editing ) : ?>
-						<a class="gvsr-btn-ghost" href="<?php echo esc_url( admin_url( 'admin.php?page=' . GV_SR_PAGE_SLUG . '&tab=quickreport' ) ); ?>">انصراف</a>
-					<?php endif; ?>
-				</div>
-			</form>
+					<!-- گام ۴: کلمات کلیدی و تغییر رتبه -->
+					<div class="gvsr-ql-step">
+						<span class="gvsr-ql-step-num">۴</span>
+						<div class="gvsr-ql-step-body">
+							<label class="gvsr-ql-label">🔑 کلمات کلیدی و تغییر رتبه (اختیاری)</label>
+							<p class="gvsr-hint">رتبه ۰ یعنی «خارج از ۱۰۰». برای کلمه‌ای که قبلاً ثبت کرده‌اید، اسمش را بنویسید تا رتبه‌ی قبلی خودکار پر شود.</p>
+							<table class="gvsr-repeater" id="gvsr-repeater-kw">
+								<thead><tr>
+									<th style="width:22%;">کلمه کلیدی</th>
+									<th style="width:12%;">موتور جستجو</th>
+									<th style="width:18%;">لینک صفحه</th>
+									<th style="width:10%;">رتبه قبلی</th>
+									<th style="width:10%;">رتبه فعلی</th>
+									<th>توضیح</th>
+									<th style="width:34px;"></th>
+								</tr></thead>
+								<tbody>
+									<tr>
+										<td><input type="text" name="kw_keyword[]" class="gvsr-kw-input" list="gvsr-kw-datalist"></td>
+										<td><input type="text" name="kw_engine[]" value="گوگل"></td>
+										<td><input type="url" name="kw_url[]"></td>
+										<td><input type="number" min="0" name="kw_prev[]" class="gvsr-kw-prev"></td>
+										<td><input type="number" min="0" name="kw_curr[]"></td>
+										<td><input type="text" name="kw_note[]"></td>
+										<td><button type="button" class="gvsr-row-del">✕</button></td>
+									</tr>
+								</tbody>
+							</table>
+							<button type="button" class="gvsr-btn-add" data-target="gvsr-repeater-kw">➕ افزودن کلمه کلیدی</button>
+							<datalist id="gvsr-kw-datalist"></datalist>
+						</div>
+					</div>
+
+					<!-- گام ۵: رشد صفحات -->
+					<div class="gvsr-ql-step">
+						<span class="gvsr-ql-step-num">۵</span>
+						<div class="gvsr-ql-step-body">
+							<label class="gvsr-ql-label">📈 رشد صفحات (اختیاری)</label>
+							<table class="gvsr-repeater" id="gvsr-repeater-growth">
+								<thead><tr>
+									<th style="width:18%;">عنوان صفحه</th>
+									<th style="width:20%;">لینک</th>
+									<th style="width:16%;">شاخص اندازه‌گیری</th>
+									<th style="width:12%;">مقدار قبل</th>
+									<th style="width:12%;">مقدار بعد</th>
+									<th>توضیح</th>
+									<th style="width:34px;"></th>
+								</tr></thead>
+								<tbody>
+									<tr>
+										<td><input type="text" name="growth_title[]"></td>
+										<td><input type="url" name="growth_url[]"></td>
+										<td><input type="text" name="growth_metric[]" placeholder="مثلاً: بازدید ماهانه صفحه"></td>
+										<td><input type="text" name="growth_before[]"></td>
+										<td><input type="text" name="growth_after[]"></td>
+										<td><input type="text" name="growth_note[]"></td>
+										<td><button type="button" class="gvsr-row-del">✕</button></td>
+									</tr>
+								</tbody>
+							</table>
+							<button type="button" class="gvsr-btn-add" data-target="gvsr-repeater-growth">➕ افزودن ردیف رشد</button>
+						</div>
+					</div>
+
+					<!-- گام ۶: کنترل نمایش برای مشتری -->
+					<div class="gvsr-ql-step">
+						<span class="gvsr-ql-step-num">۶</span>
+						<div class="gvsr-ql-step-body">
+							<label class="gvsr-ql-label">👁️ چه چیزی برای مشتری نمایش داده شود؟</label>
+							<p class="gvsr-hint">این تنظیم روی گزارش این ماه همین پروژه اعمال می‌شود.</p>
+							<div class="gvsr-vis-grid">
+								<?php foreach ( gv_sr_visibility_keys() as $key => $label ) : ?>
+									<label class="gvsr-vis-item">
+										<input type="checkbox" name="<?php echo esc_attr( $key ); ?>" <?php checked( ! empty( $visibility[ $key ] ) ); ?>>
+										<?php echo esc_html( $label ); ?>
+									</label>
+								<?php endforeach; ?>
+							</div>
+						</div>
+					</div>
+
+					<div class="gvsr-form-actions" style="margin-top:6px;">
+						<button type="submit" class="gvsr-btn-export gvsr-ql-submit"><?php echo $editing ? '💾 بروزرسانی گزارش' : '✅ ثبت گزارش'; ?></button>
+						<?php if ( $editing ) : ?>
+							<a class="gvsr-btn-ghost" href="<?php echo esc_url( admin_url( 'admin.php?page=' . GV_SR_PAGE_SLUG . '&tab=quickreport' ) ); ?>">انصراف</a>
+						<?php endif; ?>
+					</div>
+				</form>
+			</div>
 		</div>
 
 		<div class="gvsr-quicklog-side">
@@ -2494,6 +2918,7 @@ function gv_sr_render_quick_report_tab() {
 
 	<script>
 	document.addEventListener('DOMContentLoaded', function () {
+		/* ----- محاسبه‌ی خودکار مدت‌زمان ----- */
 		var startH = document.querySelector('input[name="start_h"]');
 		var startM = document.querySelector('input[name="start_m"]');
 		var endH   = document.querySelector('input[name="end_h"]');
@@ -2518,6 +2943,71 @@ function gv_sr_render_quick_report_tab() {
 			if (el) { el.addEventListener('input', recalc); }
 		});
 		recalc();
+
+		/* ----- ردیف‌های تکرارشونده (فعالیت / کلمه کلیدی / رشد) ----- */
+		document.querySelectorAll('.gvsr-btn-add').forEach(function (btn) {
+			btn.addEventListener('click', function () {
+				var table = document.getElementById(btn.getAttribute('data-target'));
+				var tbody = table.querySelector('tbody');
+				var lastRow = tbody.querySelector('tr:last-child');
+				var newRow = lastRow.cloneNode(true);
+				newRow.querySelectorAll('input[type="text"], input[type="url"], input[type="number"]').forEach(function (el) { el.value = ''; });
+				newRow.querySelectorAll('select').forEach(function (el) { el.selectedIndex = 0; });
+				tbody.appendChild(newRow);
+				bindKeywordAutofill(newRow);
+			});
+		});
+		document.addEventListener('click', function (e) {
+			if (e.target && e.target.classList.contains('gvsr-row-del')) {
+				var tbody = e.target.closest('tbody');
+				if (tbody.querySelectorAll('tr').length > 1) {
+					e.target.closest('tr').remove();
+				} else {
+					e.target.closest('tr').querySelectorAll('input[type="text"], input[type="url"], input[type="number"]').forEach(function (el) { el.value = ''; });
+				}
+			}
+		});
+
+		/* ----- حافظه‌ی کلمات کلیدی هر پروژه: با تغییر پروژه، دیتالیست به‌روز می‌شود
+		        و با تایپ/انتخاب یک کلمه‌ی قبلی، رتبه‌ی قبلی خودکار پر می‌شود ----- */
+		var kwMemory = <?php echo wp_json_encode( $kw_memory_by_project ); ?>;
+		var projectSelect = document.getElementById('gvsr-ql-project');
+		var datalist = document.getElementById('gvsr-kw-datalist');
+
+		function refreshDatalist() {
+			if (!datalist || !projectSelect) { return; }
+			datalist.innerHTML = '';
+			var list = kwMemory[projectSelect.value] || [];
+			list.forEach(function (item) {
+				var opt = document.createElement('option');
+				opt.value = item.keyword;
+				datalist.appendChild(opt);
+			});
+		}
+
+		function findKeywordInfo(word) {
+			var list = kwMemory[projectSelect.value] || [];
+			for (var i = 0; i < list.length; i++) {
+				if (list[i].keyword === word) { return list[i]; }
+			}
+			return null;
+		}
+
+		function bindKeywordAutofill(row) {
+			var kwInput = row.querySelector('.gvsr-kw-input');
+			var prevInput = row.querySelector('.gvsr-kw-prev');
+			if (!kwInput || !prevInput) { return; }
+			kwInput.addEventListener('change', function () {
+				var info = findKeywordInfo(kwInput.value);
+				if (info && !prevInput.value) { prevInput.value = info.last_rank || ''; }
+			});
+		}
+
+		if (projectSelect) {
+			projectSelect.addEventListener('change', refreshDatalist);
+			refreshDatalist();
+		}
+		document.querySelectorAll('#gvsr-repeater-kw tbody tr').forEach(bindKeywordAutofill);
 	});
 	</script>
 	<?php
@@ -2574,11 +3064,12 @@ function gv_sr_render_team_tab() {
 					<div class="gvsr-empty">هنوز کارمندی ثبت نشده. کارمندان با ورود به تب «کارکرد من» و معرفی خودشان، این‌جا اضافه می‌شوند؛ یا از فرم زیر مستقیم اضافه کنید.</div>
 				<?php else : ?>
 					<table class="gvsr-table">
-						<thead><tr><th>نام</th><?php if ( $is_super ) : ?><th>نرخ ساعتی (تومان)</th><?php endif; ?><th>وضعیت</th><th>جمع ساعت (کل دوران)</th><th>عملیات</th></tr></thead>
+						<thead><tr><th>نام</th><th>نام‌کاربری ورود</th><?php if ( $is_super ) : ?><th>نرخ ساعتی (تومان)</th><?php endif; ?><th>وضعیت</th><th>جمع ساعت (کل دوران)</th><th>عملیات</th></tr></thead>
 						<tbody>
 						<?php foreach ( $employees as $e ) : ?>
 							<tr>
 								<td><b><?php echo esc_html( $e->name ); ?></b></td>
+								<td dir="ltr"><?php echo $e->username ? esc_html( $e->username ) : '<span class="gvsr-cs-none">هنوز ثبت‌نام نکرده</span>'; ?></td>
 								<?php if ( $is_super ) : ?>
 								<td><?php echo $e->hourly_rate > 0 ? esc_html( gv_sr_fa_digits( number_format_i18n( $e->hourly_rate ) ) ) : '—'; ?></td>
 								<?php endif; ?>
@@ -2599,6 +3090,12 @@ function gv_sr_render_team_tab() {
 				<input type="hidden" name="employee_id" value="<?php echo esc_attr( $editing_emp ? $editing_emp->id : 0 ); ?>">
 				<label>نام کارمند
 					<input type="text" name="name" required value="<?php echo esc_attr( $editing_emp ? $editing_emp->name : '' ); ?>">
+				</label>
+				<label>نام‌کاربری ورود <?php echo ( $editing_emp && $editing_emp->username ) ? '(کارمند خودش موقع ثبت‌نام انتخاب می‌کند)' : ''; ?>
+					<input type="text" name="username" dir="ltr" value="<?php echo esc_attr( $editing_emp ? $editing_emp->username : '' ); ?>" placeholder="در صورت خالی‌بودن، کارمند خودش می‌سازد">
+				</label>
+				<label>ریست رمز عبور (اختیاری، حداقل ۶ کاراکتر)
+					<input type="text" name="reset_password" dir="ltr" placeholder="خالی = بدون تغییر">
 				</label>
 				<?php if ( $is_super ) : ?>
 				<label>نرخ ساعتی (تومان)
