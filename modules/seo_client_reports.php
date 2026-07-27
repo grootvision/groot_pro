@@ -1377,7 +1377,7 @@ function gv_sr_save_employee( $data, $employee_id = 0 ) {
 	$t   = $wpdb->prefix . 'gv_sr_employees';
 	$row = array(
 		'name'        => sanitize_text_field( $data['name'] ),
-		'hourly_rate' => max( 0, (int) $data['hourly_rate'] ),
+		'hourly_rate' => max( 0, (int) ( $data['hourly_rate'] ?? 0 ) ),
 		'active'      => empty( $data['active'] ) ? 0 : 1,
 	);
 
@@ -1387,14 +1387,22 @@ function gv_sr_save_employee( $data, $employee_id = 0 ) {
 
 	/* مدیر می‌تواند نام‌کاربری کارمند را تنظیم/تغییر بدهد، یا رمز عبورش را ریست کند */
 	if ( isset( $data['username'] ) && '' !== trim( (string) $data['username'] ) ) {
-		$row['username'] = sanitize_user( $data['username'] );
+		$candidate_username = sanitize_user( $data['username'] );
+		$dupe = gv_sr_get_employee_by_username( $candidate_username );
+		if ( $dupe && (int) $dupe->id !== (int) $employee_id ) {
+			return new WP_Error( 'gv_sr_dup_username', 'این نام‌کاربری قبلاً برای کارمند دیگری ثبت شده است.' );
+		}
+		$row['username'] = $candidate_username;
 	}
 	if ( ! empty( $data['password'] ) && strlen( $data['password'] ) >= 6 ) {
 		$row['password_hash'] = password_hash( $data['password'], PASSWORD_DEFAULT );
 	}
 
 	if ( $employee_id > 0 ) {
-		$wpdb->update( $t, $row, array( 'id' => $employee_id ) ); // phpcs:ignore
+		$result = $wpdb->update( $t, $row, array( 'id' => $employee_id ) ); // phpcs:ignore
+		if ( false === $result ) {
+			return new WP_Error( 'gv_sr_db_error', 'خطای دیتابیس: ' . $wpdb->last_error );
+		}
 		return $employee_id;
 	}
 
@@ -1402,7 +1410,10 @@ function gv_sr_save_employee( $data, $employee_id = 0 ) {
 		$row['global_code'] = gv_sr_generate_employee_code( $row['name'] );
 	}
 	$row['created_at'] = current_time( 'mysql' );
-	$wpdb->insert( $t, $row ); // phpcs:ignore
+	$result = $wpdb->insert( $t, $row ); // phpcs:ignore
+	if ( false === $result ) {
+		return new WP_Error( 'gv_sr_db_error', 'خطای دیتابیس: ' . $wpdb->last_error );
+	}
 	return (int) $wpdb->insert_id;
 }
 
@@ -2105,8 +2116,16 @@ function gv_sr_handle_save_employee() {
 	} elseif ( $employee_id > 0 ) {
 		$existing = gv_sr_get_employee( $employee_id );
 		$data['hourly_rate'] = $existing ? $existing->hourly_rate : 0;
+	} else {
+		$data['hourly_rate'] = 0;
 	}
-	gv_sr_save_employee( $data, $employee_id );
+
+	$result = gv_sr_save_employee( $data, $employee_id );
+
+	if ( is_wp_error( $result ) ) {
+		wp_safe_redirect( admin_url( 'admin.php?page=' . GV_SR_PAGE_SLUG . '&tab=team&emp_save_err=' . rawurlencode( $result->get_error_message() ) ) );
+		exit;
+	}
 
 	wp_safe_redirect( admin_url( 'admin.php?page=' . GV_SR_PAGE_SLUG . '&tab=team&saved_emp=1' ) );
 	exit;
@@ -2450,6 +2469,8 @@ function gv_sr_render_admin_page() {
 	if ( isset( $_GET['deleted'] ) ) { echo '<div class="gvsr-notice">گزارش حذف شد.</div>'; }
 	if ( isset( $_GET['saved_log'] ) ) { echo '<div class="gvsr-notice">✅ گزارش ثبت شد و به‌صورت خودکار در شیت «کارکرد من» شما هم اضافه شد.</div>'; }
 	if ( isset( $_GET['saved_emp'] ) ) { echo '<div class="gvsr-notice">اطلاعات کارمند ذخیره شد.</div>'; }
+	if ( isset( $_GET['saved_emp'] ) ) { echo '<div class="gvsr-notice">اطلاعات کارمند ذخیره شد.</div>'; }
+	if ( isset( $_GET['emp_save_err'] ) ) { echo '<div class="gvsr-notice" style="background:#fee2e2;color:#b91c1c;border-color:#fca5a5;">' . esc_html( wp_unslash( $_GET['emp_save_err'] ) ) . '</div>'; }
 	if ( isset( $_GET['pass_changed'] ) ) { echo '<div class="gvsr-notice">رمز عبور بخش مدیریت تیم تغییر کرد.</div>'; }
 	if ( isset( $_GET['err'] ) && 'noemp' === $_GET['err'] ) { echo '<div class="gvsr-notice" style="background:#fee2e2;color:#b91c1c;border-color:#fca5a5;">ابتدا باید مشخص کنید چه کسی هستید.</div>'; }
 	if ( isset( $_GET['err'] ) && 'noproject' === $_GET['err'] ) { echo '<div class="gvsr-notice" style="background:#fee2e2;color:#b91c1c;border-color:#fca5a5;">لطفاً ابتدا یک پروژه انتخاب کنید.</div>'; }
