@@ -951,7 +951,10 @@ function gv_sr_quick_log_work_multi( $data, $activities, $timelog_id = 0 ) {
 		}
 	}
 
-	if ( $report_id > 0 ) { gv_sr_recalc_report_hours( $report_id ); }
+if ( $report_id > 0 ) { gv_sr_recalc_report_hours( $report_id ); }
+
+	/* هوک برای ماژول‌های جانبی، از جمله همگام‌سازی چندسایتی (gv_seo_team_sync.php) */
+	do_action( 'gv_sr_after_save_timelog', (int) $row['employee_id'] );
 
 	return $timelog_id;
 }
