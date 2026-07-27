@@ -1442,13 +1442,18 @@ function gv_sr_employee_logout() {
 }
 
 /** ثبت‌نام کارمند جدید با یوزرنیم/رمز عبور اختصاصی خودش، سپس ورود خودکار */
-function gv_sr_employee_register( $name, $username, $password ) {
+function gv_sr_employee_register( $name, $username, $password, $existing_global_code = '' ) {
 	$username = sanitize_user( $username );
 	if ( '' === trim( (string) $name ) || '' === $username || strlen( $password ) < 6 ) {
 		return new WP_Error( 'gv_sr_emp_reg_invalid', 'نام، نام‌کاربری و رمز عبور (حداقل ۶ کاراکتر) الزامی است.' );
 	}
 	if ( gv_sr_get_employee_by_username( $username ) ) {
 		return new WP_Error( 'gv_sr_emp_reg_taken', 'این نام‌کاربری قبلاً استفاده شده؛ نام‌کاربری دیگری انتخاب کنید.' );
+	}
+
+	$global_code = gv_sr_sanitize_employee_code( $existing_global_code );
+	if ( '' === $global_code ) {
+		$global_code = gv_sr_generate_employee_code( $name );
 	}
 
 	global $wpdb;
@@ -1458,7 +1463,7 @@ function gv_sr_employee_register( $name, $username, $password ) {
 		'username'      => $username,
 		'password_hash' => password_hash( $password, PASSWORD_DEFAULT ),
 		'hourly_rate'   => 0,
-		'global_code'   => gv_sr_generate_employee_code( $name ),
+		'global_code'   => $global_code,
 		'active'        => 1,
 		'created_at'    => current_time( 'mysql' ),
 	);
@@ -1879,11 +1884,12 @@ function gv_sr_handle_employee_register() {
 	if ( ! current_user_can( 'manage_options' ) ) { wp_die( 'دسترسی ندارید.' ); }
 	check_admin_referer( GV_SR_EMP_AUTH_NONCE );
 
-	$name     = isset( $_POST['reg_name'] ) ? wp_unslash( $_POST['reg_name'] ) : '';
-	$username = isset( $_POST['reg_username'] ) ? wp_unslash( $_POST['reg_username'] ) : '';
-	$password = isset( $_POST['reg_password'] ) ? (string) $_POST['reg_password'] : '';
+	$name        = isset( $_POST['reg_name'] ) ? wp_unslash( $_POST['reg_name'] ) : '';
+	$username    = isset( $_POST['reg_username'] ) ? wp_unslash( $_POST['reg_username'] ) : '';
+	$password    = isset( $_POST['reg_password'] ) ? (string) $_POST['reg_password'] : '';
+	$global_code = isset( $_POST['reg_global_code'] ) ? wp_unslash( $_POST['reg_global_code'] ) : '';
 
-	$result   = gv_sr_employee_register( $name, $username, $password );
+	$result   = gv_sr_employee_register( $name, $username, $password, $global_code );
 	$redirect = wp_get_referer() ? wp_get_referer() : admin_url( 'admin.php?page=' . GV_SR_PAGE_SLUG . '&tab=my' );
 	$redirect = remove_query_arg( 'emp_err', $redirect );
 	if ( is_wp_error( $result ) ) { $redirect = add_query_arg( 'emp_err', 'register', $redirect ); }
@@ -2095,10 +2101,11 @@ function gv_sr_handle_save_employee() {
 
 	$employee_id = isset( $_POST['employee_id'] ) ? (int) $_POST['employee_id'] : 0;
 	$data = array(
-		'name'     => isset( $_POST['name'] ) ? wp_unslash( $_POST['name'] ) : '',
-		'active'   => isset( $_POST['active'] ) ? 1 : 0,
-		'username' => isset( $_POST['username'] ) ? wp_unslash( $_POST['username'] ) : '',
-		'password' => isset( $_POST['reset_password'] ) ? (string) $_POST['reset_password'] : '',
+		'name'        => isset( $_POST['name'] ) ? wp_unslash( $_POST['name'] ) : '',
+		'active'      => isset( $_POST['active'] ) ? 1 : 0,
+		'username'    => isset( $_POST['username'] ) ? wp_unslash( $_POST['username'] ) : '',
+		'password'    => isset( $_POST['reset_password'] ) ? (string) $_POST['reset_password'] : '',
+		'global_code' => isset( $_POST['global_code'] ) ? wp_unslash( $_POST['global_code'] ) : '',
 	);
 	/* نرخ ساعتی، اطلاعات حقوقی است و فقط مدیر اصلی اجازه تغییرش را دارد */
 	if ( gv_sr_is_super_admin() ) {
@@ -2287,8 +2294,11 @@ function gv_sr_render_top_bar() {
 							<label style="display:block;font-size:11.8px;font-weight:700;color:var(--gv-ink-soft);margin-bottom:8px;">نام‌کاربری (برای ورودهای بعدی)
 								<input type="text" name="reg_username" required dir="ltr" style="width:100%;margin-top:6px;padding:8px 10px;border:1px solid var(--gv-border);border-radius:8px;">
 							</label>
-							<label style="display:block;font-size:11.8px;font-weight:700;color:var(--gv-ink-soft);margin-bottom:10px;">رمز عبور (حداقل ۶ کاراکتر)
+							<label style="display:block;font-size:11.8px;font-weight:700;color:var(--gv-ink-soft);margin-bottom:8px;">رمز عبور (حداقل ۶ کاراکتر)
 								<input type="password" name="reg_password" required minlength="6" dir="ltr" style="width:100%;margin-top:6px;padding:8px 10px;border:1px solid var(--gv-border);border-radius:8px;">
+							</label>
+							<label style="display:block;font-size:11.8px;font-weight:700;color:var(--gv-ink-soft);margin-bottom:10px;">کد کارمندی مشترک (اگر قبلاً در سایت دیگری ثبت‌نام کرده‌اید، اینجا وارد کنید — در غیر این‌صورت خالی بگذارید)
+								<input type="text" name="reg_global_code" dir="ltr" placeholder="مثلاً: emp-5276" style="width:100%;margin-top:6px;padding:8px 10px;border:1px solid var(--gv-border);border-radius:8px;">
 							</label>
 							<button type="submit" class="gvsr-topbar-btn-start" style="width:100%;justify-content:center;">ساخت حساب و ورود</button>
 						</form>
@@ -3097,6 +3107,9 @@ function gv_sr_render_team_tab() {
 				</label>
 				<label>ریست رمز عبور (اختیاری، حداقل ۶ کاراکتر)
 					<input type="text" name="reset_password" dir="ltr" placeholder="خالی = بدون تغییر">
+				</label>
+				<label>کد کارمندی مشترک (برای یکی‌کردن با سایت‌های دیگر)
+					<input type="text" name="global_code" dir="ltr" value="<?php echo esc_attr( $editing_emp ? $editing_emp->global_code : '' ); ?>" placeholder="مثلاً: emp-5276">
 				</label>
 				<?php if ( $is_super ) : ?>
 				<label>نرخ ساعتی (تومان)
