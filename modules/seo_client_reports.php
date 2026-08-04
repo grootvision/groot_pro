@@ -1,19 +1,7 @@
 <?php
 if ( ! defined( 'ABSPATH' ) ) { exit; }
-/**
- * این دو فایل («پچ استایل» و «پچ تجربه‌کاربری») قبلاً به‌صورت فایل‌های جدا
- * بودند. چون این فایل‌ها روی سرور موجود نیستند و باعث خطای Fatal می‌شدند،
- * دیگر require نمی‌شوند؛ در عوض، اگر همچنان جایی روی سرور وجود داشته
- * باشند (اختیاری) لود می‌شوند، وگرنه نسخه‌ی جایگزینِ توکاری که پایین‌تر در
- * همین فایل تعریف شده استفاده می‌شود — بنابراین افزونه بدون نیاز به هیچ
- * فایل جانبی‌ای کار می‌کند.
- */
-if ( file_exists( __DIR__ . '/gv-seo-restyle-patch.php' ) ) {
-	require_once __DIR__ . '/gv-seo-restyle-patch.php';
-}
-if ( file_exists( __DIR__ . '/gv-seo-ux-patch.php' ) ) {
-	require_once __DIR__ . '/gv-seo-ux-patch.php';
-}
+require_once __DIR__ . '/gv-seo-restyle-patch.php';
+require_once __DIR__ . '/gv-seo-ux-patch.php';
 /**
  * ==========================================================
  *  Groot Vision — گزارش عملکرد سئوی مشتری
