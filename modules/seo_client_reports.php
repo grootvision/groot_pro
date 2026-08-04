@@ -1,5 +1,7 @@
 <?php
 if ( ! defined( 'ABSPATH' ) ) { exit; }
+require_once __DIR__ . '/gv-seo-restyle-patch.php';
+require_once __DIR__ . '/gv-seo-ux-patch.php';
 /**
  * ==========================================================
  *  Groot Vision — گزارش عملکرد سئوی مشتری
@@ -269,13 +271,18 @@ function gv_sr_task_type_label( $type ) {
 	return isset( $types[ $type ] ) ? $types[ $type ]['label'] : $type;
 }
 
+/** نمایش عدد صفر به شکل دلگرم‌کننده‌تر (به‌جای ۰ خام) در باکس‌های آماری */
+function gv_sr_friendly_number( $n ) {
+	$n = (int) $n;
+	return $n > 0 ? number_format_i18n( $n ) : '—';
+}
+
 function gv_sr_visibility_keys() {
 	return array(
 		'show_summary'    => 'خلاصه گزارش کارمند',
 		'show_keywords'   => 'جدول کلمات کلیدی و تغییر رتبه',
 		'show_tasks'      => 'ریز فعالیت‌ها و محتوای تولیدشده',
 		'show_growth'     => 'رشد صفحات',
-		'show_traffic'    => 'ترافیک ارگانیک',
 		'show_hours'      => 'ساعت کار ثبت‌شده',
 		'show_charts'     => 'نمودارها',
 		'show_next_steps' => 'برنامه گام بعدی',
@@ -285,8 +292,8 @@ function gv_sr_default_visibility() {
 	$out = array();
 	foreach ( array_keys( gv_sr_visibility_keys() ) as $k ) { $out[ $k ] = 1; }
 	/* پیش‌فرض چیزی که مشتری باید ببیند: رشد صفحات، رشد کلمات کلیدی و فعالیت‌های انجام‌شده.
-	   ساعت کارکرد اطلاعات داخلی است و پیش‌فرض برای مشتری مخفی می‌ماند
-	   (مدیر می‌تواند در هر گزارش دستی روشنش کند). */
+	   ساعت کارکرد اطلاعات داخلی است و هیچ‌وقت — چه این تیک روشن باشد چه خاموش — برای
+	   مشتری نمایش داده نمی‌شود (نگاه کنید به gv_sr_render_report_detail). */
 	$out['show_hours'] = 0;
 	return $out;
 }
@@ -478,6 +485,19 @@ function gv_sr_read_jalali_get( $name, $fallback_mysql_date = '' ) {
 	return sprintf( '%04d-%02d-%02d', $gy, $gm, $gd );
 }
 
+/** برچسبِ امن گزارش برای نمایش به مشتری — همیشه فقط از روی تاریخِ بازه ساخته
+    می‌شود، نه از فیلد آزادِ «عنوان» گزارش؛ به این ترتیب هرگز اسم کارمند یا هر
+    متن دیگری که ممکن است اشتباهی در عنوان وارد شده باشد، برای مشتری نمایش
+    داده نمی‌شود. */
+function gv_sr_client_safe_report_label( $report ) {
+	$parts = explode( '-', (string) $report->period_end );
+	if ( count( $parts ) === 3 ) {
+		list( $jy, $jm ) = gv_sr_g2j( (int) $parts[0], (int) $parts[1], (int) $parts[2] );
+		return 'گزارش ' . gv_sr_month_name( $jm ) . ' ' . gv_sr_fa_digits( $jy );
+	}
+	return 'گزارش عملکرد سئو';
+}
+
 /* ==========================================================================
    ۳) دسترسی به دیتابیس — گزارش‌ها
    ========================================================================== */
@@ -551,40 +571,6 @@ function gv_sr_get_clients() {
 	return $wpdb->get_results( "SELECT DISTINCT client_name, user_id FROM {$t} ORDER BY client_name ASC" ); // phpcs:ignore
 }
 
-function gv_sr_save_report( $data, $report_id = 0 ) {
-	global $wpdb;
-	$t   = $wpdb->prefix . 'gv_sr_reports';
-	$now = current_time( 'mysql' );
-
-	$row = array(
-		'client_name'    => sanitize_text_field( $data['client_name'] ),
-		'user_id'        => (int) $data['user_id'],
-		'project_id'     => isset( $data['project_id'] ) ? (int) $data['project_id'] : 0,
-		'title'          => sanitize_text_field( $data['title'] ),
-		'period_start'   => $data['period_start'],
-		'period_end'     => $data['period_end'],
-		'summary'        => wp_kses_post( $data['summary'] ),
-		'next_steps'     => wp_kses_post( $data['next_steps'] ),
-		'hours_spent'    => (float) $data['hours_spent'],
-		'traffic_before' => (int) $data['traffic_before'],
-		'traffic_after'  => (int) $data['traffic_after'],
-		'overall_score'  => max( 0, min( 100, (int) $data['overall_score'] ) ),
-		'status'         => in_array( $data['status'], array( 'draft', 'published' ), true ) ? $data['status'] : 'draft',
-		'visibility'     => wp_json_encode( $data['visibility'] ),
-		'updated_at'     => $now,
-	);
-
-	if ( $report_id > 0 ) {
-		$wpdb->update( $t, $row, array( 'id' => $report_id ) ); // phpcs:ignore
-		return $report_id;
-	}
-
-	$row['author_id']  = get_current_user_id();
-	$row['created_at'] = $now;
-	$wpdb->insert( $t, $row ); // phpcs:ignore
-	return (int) $wpdb->insert_id;
-}
-
 function gv_sr_delete_report( $report_id ) {
 	global $wpdb;
 	$report_id = (int) $report_id;
@@ -600,26 +586,6 @@ function gv_sr_get_keywords( $report_id ) {
 	global $wpdb;
 	$t = $wpdb->prefix . 'gv_sr_keywords';
 	return $wpdb->get_results( $wpdb->prepare( "SELECT * FROM {$t} WHERE report_id = %d ORDER BY sort_order ASC, id ASC", (int) $report_id ) ); // phpcs:ignore
-}
-function gv_sr_save_keywords( $report_id, $rows ) {
-	global $wpdb;
-	$t = $wpdb->prefix . 'gv_sr_keywords';
-	$wpdb->delete( $t, array( 'report_id' => $report_id ) ); // phpcs:ignore
-	if ( empty( $rows ) ) { return; }
-	$order = 0;
-	foreach ( $rows as $r ) {
-		if ( empty( trim( (string) $r['keyword'] ) ) ) { continue; }
-		$wpdb->insert( $t, array( // phpcs:ignore
-			'report_id'     => $report_id,
-			'keyword'       => sanitize_text_field( $r['keyword'] ),
-			'search_engine' => sanitize_text_field( $r['search_engine'] ?: 'گوگل' ),
-			'page_url'      => esc_url_raw( $r['page_url'] ),
-			'prev_rank'     => (int) $r['prev_rank'],
-			'curr_rank'     => (int) $r['curr_rank'],
-			'note'          => sanitize_text_field( $r['note'] ),
-			'sort_order'    => $order++,
-		) );
-	}
 }
 
 /**
@@ -714,14 +680,32 @@ function gv_sr_update_report_visibility( $report_id, $visibility ) {
 	);
 }
 
-/** مثل gv_sr_get_or_create_open_report ولی چیزی نمی‌سازد؛ فقط برای پیش‌نمایش تنظیمات نمایش استفاده می‌شود */
+/**
+ * به‌روزرسانی «انتشار و نتیجه‌ی کلی» یک گزارش (وضعیت/خلاصه/گام بعدی/اتصال کاربر)
+ * مستقیماً از همان فرم «ثبت گزارش» — بدون نیاز به صفحه‌ی جدای «ویرایش کامل».
+ */
+function gv_sr_update_report_extra( $report_id, $data ) {
+	global $wpdb;
+	$row = array(
+		'status'     => in_array( $data['status'], array( 'draft', 'published' ), true ) ? $data['status'] : 'draft',
+		'user_id'    => isset( $data['user_id'] ) ? (int) $data['user_id'] : 0,
+		'summary'    => wp_kses_post( $data['summary'] ),
+		'next_steps' => wp_kses_post( $data['next_steps'] ),
+		'updated_at' => current_time( 'mysql' ),
+	);
+	$wpdb->update( $wpdb->prefix . 'gv_sr_reports', $row, array( 'id' => (int) $report_id ) ); // phpcs:ignore
+}
+
+/** مثل gv_sr_get_or_create_open_report ولی چیزی نمی‌سازد؛ فقط برای پیش‌نمایش تنظیمات نمایش/انتشار استفاده می‌شود.
+    عمداً به «پیش‌نویس» محدود نیست — وگرنه بعد از انتشار یک گزارش، این تابع دیگر
+    آن را پیدا نمی‌کرد و فرم انگار گزارشی وجود ندارد نشان می‌داد. */
 function gv_sr_peek_open_report( $project ) {
 	if ( ! $project ) { return null; }
 	global $wpdb;
 	$t = $wpdb->prefix . 'gv_sr_reports';
 	list( $period_start, $period_end ) = gv_sr_current_jalali_month_bounds();
 	return $wpdb->get_row( $wpdb->prepare( // phpcs:ignore
-		"SELECT * FROM {$t} WHERE project_id = %d AND period_start = %s AND period_end = %s AND status = 'draft' LIMIT 1",
+		"SELECT * FROM {$t} WHERE project_id = %d AND period_start = %s AND period_end = %s LIMIT 1",
 		(int) $project->id, $period_start, $period_end
 	) );
 }
@@ -735,53 +719,12 @@ function gv_sr_get_tasks( $report_id, $orderby = 'work_date', $order = 'DESC' ) 
 	$order   = 'ASC' === strtoupper( $order ) ? 'ASC' : 'DESC';
 	return $wpdb->get_results( $wpdb->prepare( "SELECT * FROM {$t} WHERE report_id = %d ORDER BY {$orderby} {$order}", (int) $report_id ) ); // phpcs:ignore
 }
-function gv_sr_save_tasks( $report_id, $rows ) {
-	global $wpdb;
-	$t = $wpdb->prefix . 'gv_sr_tasks';
-	/* فقط ردیف‌های دستیِ قبلی (بدون منبع تایم‌شیت) حذف و جایگزین می‌شوند؛
-	   ردیف‌هایی که خودکار از «کارکرد من» ساخته شده‌اند (source_timelog_id > 0)
-	   دست‌نخورده می‌مانند تا با ویرایش فرم گزارش پاک نشوند. */
-	$wpdb->query( $wpdb->prepare( "DELETE FROM {$t} WHERE report_id = %d AND source_timelog_id = 0", (int) $report_id ) ); // phpcs:ignore
-	if ( empty( $rows ) ) { return; }
-	$types = array_keys( gv_sr_task_types() );
-	foreach ( $rows as $r ) {
-		if ( empty( trim( (string) $r['title'] ) ) ) { continue; }
-		$wpdb->insert( $t, array( // phpcs:ignore
-			'report_id'      => $report_id,
-			'task_type'      => in_array( $r['task_type'], $types, true ) ? $r['task_type'] : 'other',
-			'title'          => sanitize_text_field( $r['title'] ),
-			'url'            => esc_url_raw( $r['url'] ),
-			'target_keyword' => sanitize_text_field( $r['target_keyword'] ),
-			'work_date'      => $r['work_date'],
-			'hours'          => (float) $r['hours'],
-			'note'           => sanitize_text_field( $r['note'] ),
-		) );
-	}
-}
 
 /* ---------------- رشد صفحات ---------------- */
 function gv_sr_get_growth( $report_id ) {
 	global $wpdb;
 	$t = $wpdb->prefix . 'gv_sr_growth';
 	return $wpdb->get_results( $wpdb->prepare( "SELECT * FROM {$t} WHERE report_id = %d ORDER BY id ASC", (int) $report_id ) ); // phpcs:ignore
-}
-function gv_sr_save_growth( $report_id, $rows ) {
-	global $wpdb;
-	$t = $wpdb->prefix . 'gv_sr_growth';
-	$wpdb->delete( $t, array( 'report_id' => $report_id ) ); // phpcs:ignore
-	if ( empty( $rows ) ) { return; }
-	foreach ( $rows as $r ) {
-		if ( empty( trim( (string) $r['metric_label'] ) ) && empty( trim( (string) $r['page_title'] ) ) ) { continue; }
-		$wpdb->insert( $t, array( // phpcs:ignore
-			'report_id'    => $report_id,
-			'page_title'   => sanitize_text_field( $r['page_title'] ),
-			'page_url'     => esc_url_raw( $r['page_url'] ),
-			'metric_label' => sanitize_text_field( $r['metric_label'] ?: 'رشد' ),
-			'before_value' => sanitize_text_field( $r['before_value'] ),
-			'after_value'  => sanitize_text_field( $r['after_value'] ),
-			'note'         => sanitize_text_field( $r['note'] ),
-		) );
-	}
 }
 
 /* ==========================================================================
@@ -799,8 +742,12 @@ function gv_sr_get_or_create_open_report( $project ) {
 
 	list( $period_start, $period_end ) = gv_sr_current_jalali_month_bounds();
 
+	/* عمداً وضعیت (draft/published) در این جست‌وجو شرط نیست: قبلاً فقط
+	   پیش‌نویس‌ها پیدا می‌شدند، پس به‌محض «انتشار» یک گزارش، ثبتِ سریعِ بعدیِ
+	   همان پروژه در همان ماه، آن را دیگر پیدا نمی‌کرد و یک گزارش کاملاً
+	   جدید (تکراری) برایش می‌ساخت. */
 	$existing = $wpdb->get_row( $wpdb->prepare( // phpcs:ignore
-		"SELECT * FROM {$t} WHERE project_id = %d AND period_start = %s AND period_end = %s AND status = 'draft' LIMIT 1",
+		"SELECT * FROM {$t} WHERE project_id = %d AND period_start = %s AND period_end = %s LIMIT 1",
 		(int) $project->id, $period_start, $period_end
 	) );
 	if ( $existing ) { return $existing; }
@@ -830,6 +777,33 @@ function gv_sr_get_or_create_open_report( $project ) {
 	) );
 
 	return gv_sr_get_report( (int) $wpdb->insert_id );
+}
+
+/**
+ * تعیین می‌کند فعالیت/تنظیمات جدید باید روی کدام گزارش اعمال شود.
+ * ------------------------------------------------------------------------
+ * اگر در حال ویرایش یک ردیف کارکرد قبلی هستیم (timelog_id مشخص است)، دقیقاً
+ * همان گزارشی که آن ردیف از قبل به آن متصل بود برگردانده می‌شود — نه یک
+ * جست‌وجوی تازه بر اساس «ماه جاری». همین نکته، دلیل اصلیِ ساخته‌شدنِ گزارش
+ * تکراری هنگام ویرایش بود: قبلاً هر بار (چه ثبت جدید، چه ویرایش) دوباره به
+ * دنبال «گزارش باز ماه جاری» می‌گشت و اگر به هر دلیلی آن جست‌وجو گزارش قبلی
+ * را پیدا نمی‌کرد، یک گزارش تازه می‌ساخت و ساعت/متن‌ها را در دو گزارش جدا
+ * پخش می‌کرد (که در ظاهر شبیه «دو برابر شدن» به‌نظر می‌رسید).
+ * برای ثبتِ کاملاً تازه (بدون ویرایش)، همچنان گزارشِ بازِ ماه جاری پیدا یا
+ * ساخته می‌شود.
+ */
+function gv_sr_resolve_target_report( $project, $timelog_id = 0 ) {
+	if ( ! $project ) { return null; }
+
+	if ( $timelog_id > 0 ) {
+		$existing_log = gv_sr_get_timelog( $timelog_id );
+		if ( $existing_log && (int) $existing_log->report_id > 0 ) {
+			$existing_report = gv_sr_get_report( (int) $existing_log->report_id );
+			if ( $existing_report ) { return $existing_report; }
+		}
+	}
+
+	return gv_sr_get_or_create_open_report( $project );
 }
 
 /** بازمحاسبه‌ی مجموع ساعت یک گزارش، بر اساس ریز فعالیت‌های آن */
@@ -877,14 +851,17 @@ function gv_sr_quick_log_work_multi( $data, $activities, $timelog_id = 0 ) {
 		$end   = null;
 	}
 
-	/* فعالیت‌های خالی را حذف کن؛ اگر هیچ‌کدام باقی نماند، یک ردیف پیش‌فرض بساز */
+	/* فعالیت‌های بدون توضیح حذف می‌شوند. برخلاف نسخه‌ی قبلی، دیگر برای
+	   ورودی‌های خالی یک ردیف ساختگی «سایر فعالیت‌ها» ساخته نمی‌شود — چون
+	   همین رفتار باعث می‌شد به‌ازای هر بار ثبتِ بدون توضیح، یک فعالیت
+	   نامرتبط و تکراری در گزارش مشتری ظاهر شود. اگر کارمند هیچ توضیحی
+	   ننویسد، فقط خودِ ساعتِ کارکرد (برای تایم‌شیت داخلی) ثبت می‌شود و
+	   هیچ ردیف فعالیتی به گزارش مشتری اضافه نمی‌گردد. */
 	$activities = array_values( array_filter( $activities, function ( $a ) {
 		return '' !== trim( (string) ( $a['note'] ?? '' ) );
 	} ) );
-	if ( empty( $activities ) ) {
-		$activities = array( array( 'type' => 'other', 'note' => '' ) );
-	}
-	$per_activity_hours = round( $hours / count( $activities ), 2 );
+	$activity_count     = count( $activities );
+	$per_activity_hours = $activity_count > 0 ? round( $hours / $activity_count, 2 ) : 0;
 
 	$row = array(
 		'employee_id'   => (int) $data['employee_id'],
@@ -904,8 +881,11 @@ function gv_sr_quick_log_work_multi( $data, $activities, $timelog_id = 0 ) {
 	$task_types    = array_keys( gv_sr_task_types() );
 
 	if ( $project ) {
-		$report    = gv_sr_get_or_create_open_report( $project );
-		$report_id = $report->id;
+		/* از تابع مرکزی «تعیین گزارش هدف» استفاده می‌شود: اگر این یک ویرایش
+		   است، همان گزارشِ قبلیِ همین ردیف کارکرد برداشته می‌شود، نه یک
+		   جست‌وجوی تازه که ممکن است گزارش دیگری برگرداند. */
+		$report    = gv_sr_resolve_target_report( $project, $timelog_id );
+		$report_id = $report ? (int) $report->id : 0;
 
 		/* اگر در حال ویرایش هستیم، فعالیت‌های قبلی همین ردیف کارکرد را حذف کن
 		   و دوباره طبق فهرست جدید بساز (تا فعالیت‌های حذف‌شده هم واقعاً حذف شوند). */
@@ -989,7 +969,7 @@ function gv_sr_rank_delta( $prev, $curr ) {
 	$curr = (int) $curr;
 
 	if ( 0 === $curr ) {
-		return array( 'type' => 'out', 'diff' => 0, 'label' => 'خارج از ۱۰۰', 'color' => '#94a3b8', 'icon' => '—' );
+		return array( 'type' => 'out', 'diff' => 0, 'label' => 'کلمه کلیدی تازه وارد', 'color' => '#94a3b8', 'icon' => '🆕' );
 	}
 	if ( 0 === $prev ) {
 		return array( 'type' => 'new', 'diff' => 0, 'label' => 'ورود تازه به رتبه ' . gv_sr_fa_digits( $curr ), 'color' => '#2563eb', 'icon' => '✨' );
@@ -1079,28 +1059,6 @@ function gv_sr_keyword_history( $user_id ) {
 	return $out;
 }
 
-function gv_sr_traffic_trend( $user_id ) {
-	$out = array();
-	if ( $user_id <= 0 ) { return $out; }
-	global $wpdb;
-	$t = $wpdb->prefix . 'gv_sr_reports';
-	$rows = $wpdb->get_results( $wpdb->prepare( // phpcs:ignore
-		"SELECT title, period_end, traffic_before, traffic_after, visibility FROM {$t}
-		 WHERE user_id = %d AND status = 'published' ORDER BY period_end ASC",
-		$user_id
-	) );
-	foreach ( $rows as $r ) {
-		$vis = json_decode( (string) $r->visibility, true );
-		if ( is_array( $vis ) && isset( $vis['show_traffic'] ) && ! $vis['show_traffic'] ) { continue; }
-		$out[] = array(
-			'label'  => gv_sr_jalali_numeric( $r->period_end ),
-			'before' => (int) $r->traffic_before,
-			'after'  => (int) $r->traffic_after,
-		);
-	}
-	return $out;
-}
-
 function gv_sr_keyword_status_summary( $user_id ) {
 	$summary = array( 'up' => 0, 'down' => 0, 'same' => 0, 'new' => 0, 'out' => 0 );
 	if ( $user_id <= 0 ) { return $summary; }
@@ -1166,29 +1124,35 @@ function gv_sr_global_task_counts( $date_from = '', $date_to = '' ) {
    ۵) نمودارهای SVG سبک (بدون هیچ وابستگی خارجی)
    ========================================================================== */
 
-function gv_sr_svg_bar_chart( $items, $color = '#059669', $width = 640, $height = 200 ) {
+function gv_sr_svg_bar_chart( $items, $color = '#059669', $width = 640, $height = 170 ) {
 	if ( empty( $items ) ) { return '<div class="gvsr-chart-empty">داده‌ای برای نمایش نمودار وجود ندارد.</div>'; }
 
-	$pad_l = 34; $pad_b = 30; $pad_t = 14; $pad_r = 10;
+	$pad_l = 30; $pad_b = 26; $pad_t = 20; $pad_r = 10;
 	$chart_w = $width - $pad_l - $pad_r;
 	$chart_h = $height - $pad_t - $pad_b;
 	$max_v   = max( 1, max( wp_list_pluck( $items, 'value' ) ) );
 	$n       = count( $items );
-	$gap     = 10;
-	$bar_w   = max( 8, ( $chart_w - ( $gap * ( $n - 1 ) ) ) / $n );
+	$gap     = 16;
+	/* عرض میله‌ها را به یک سقف مشخص محدود می‌کنیم تا در نمودارهایی با تعداد
+	   ستون کم، میله‌ها بیش‌ازحد پهن و ناخوش‌فرم نشوند. */
+	$bar_w   = min( 30, max( 8, ( $chart_w - ( $gap * ( $n - 1 ) ) ) / $n ) );
+
+	/* گروه میله‌ها را وسط‌چین کن تا در فضای خالیِ باقی‌مانده معلق نمانَد */
+	$group_w = ( $bar_w * $n ) + ( $gap * max( 0, $n - 1 ) );
+	$start_x = $pad_l + max( 0, ( $chart_w - $group_w ) / 2 );
 
 	$svg  = '<svg viewBox="0 0 ' . esc_attr( $width ) . ' ' . esc_attr( $height ) . '" xmlns="http://www.w3.org/2000/svg" class="gvsr-svg-chart">';
 	$svg .= '<line x1="' . $pad_l . '" y1="' . ( $height - $pad_b ) . '" x2="' . ( $width - $pad_r ) . '" y2="' . ( $height - $pad_b ) . '" stroke="#e2e8f0" stroke-width="1"/>';
 
-	$x = $pad_l;
+	$x = $start_x;
 	foreach ( $items as $item ) {
 		$v      = max( 0, (float) $item['value'] );
 		$bar_h  = $max_v > 0 ? ( $v / $max_v ) * $chart_h : 0;
 		$y      = $height - $pad_b - $bar_h;
-		$svg   .= '<rect x="' . round( $x, 1 ) . '" y="' . round( $y, 1 ) . '" width="' . round( $bar_w, 1 ) . '" height="' . round( $bar_h, 1 ) . '" rx="4" fill="' . esc_attr( $color ) . '"><title>' . esc_html( $item['label'] . ': ' . $item['value'] ) . '</title></rect>';
-		$svg   .= '<text x="' . round( $x + $bar_w / 2, 1 ) . '" y="' . ( $height - $pad_b + 16 ) . '" font-size="10" fill="#64748b" text-anchor="middle">' . esc_html( $item['label'] ) . '</text>';
+		$svg   .= '<rect x="' . round( $x, 1 ) . '" y="' . round( $y, 1 ) . '" width="' . round( $bar_w, 1 ) . '" height="' . round( $bar_h, 1 ) . '" rx="6" fill="' . esc_attr( $color ) . '" fill-opacity="0.85"><title>' . esc_html( $item['label'] . ': ' . $item['value'] ) . '</title></rect>';
+		$svg   .= '<text x="' . round( $x + $bar_w / 2, 1 ) . '" y="' . ( $height - $pad_b + 15 ) . '" font-size="9.5" fill="#64748b" text-anchor="middle">' . esc_html( $item['label'] ) . '</text>';
 		if ( $v > 0 ) {
-			$svg .= '<text x="' . round( $x + $bar_w / 2, 1 ) . '" y="' . round( $y - 4, 1 ) . '" font-size="10" fill="#334155" text-anchor="middle" font-weight="700">' . esc_html( gv_sr_fa_digits( $v ) ) . '</text>';
+			$svg .= '<text x="' . round( $x + $bar_w / 2, 1 ) . '" y="' . round( $y - 5, 1 ) . '" font-size="10" fill="#334155" text-anchor="middle" font-weight="700">' . esc_html( gv_sr_fa_digits( $v ) ) . '</text>';
 		}
 		$x += $bar_w + $gap;
 	}
@@ -1713,112 +1677,15 @@ function gv_sr_admin_menu() {
 }
 
 /* ==========================================================================
-   ۷) ثبت / ویرایش / حذف گزارش (Admin Post handlers)
+   ۷) حذف گزارش و خروجی CSV فعالیت‌ها (Admin Post handlers)
    ========================================================================== */
-add_action( 'admin_post_gv_sr_save_report', 'gv_sr_handle_save_report' );
-function gv_sr_handle_save_report() {
-	if ( ! current_user_can( 'manage_options' ) ) { wp_die( 'دسترسی ندارید.' ); }
-	check_admin_referer( GV_SR_NONCE );
-
-	$report_id = isset( $_POST['report_id'] ) ? (int) $_POST['report_id'] : 0;
-
-	$visibility = array();
-	foreach ( array_keys( gv_sr_visibility_keys() ) as $key ) {
-		$visibility[ $key ] = isset( $_POST[ $key ] ) ? 1 : 0;
-	}
-
-	$project_id = isset( $_POST['project_id'] ) ? (int) $_POST['project_id'] : 0;
-	$client_name = isset( $_POST['client_name'] ) ? wp_unslash( $_POST['client_name'] ) : '';
-	$user_id = isset( $_POST['user_id'] ) ? (int) $_POST['user_id'] : 0;
-
-	if ( $project_id > 0 ) {
-		$proj = gv_sr_get_project( $project_id );
-		if ( $proj ) {
-			$client_name = $proj->client_name;
-			if ( ! $user_id ) { $user_id = (int) $proj->user_id; }
-		}
-	}
-
-	$data = array(
-		'client_name'    => $client_name,
-		'user_id'        => $user_id,
-		'project_id'     => $project_id,
-		'title'          => isset( $_POST['title'] ) ? wp_unslash( $_POST['title'] ) : '',
-		'period_start'   => gv_sr_read_jalali_post( 'period_start' ),
-		'period_end'     => gv_sr_read_jalali_post( 'period_end' ),
-		'summary'        => isset( $_POST['summary'] ) ? wp_unslash( $_POST['summary'] ) : '',
-		'next_steps'     => isset( $_POST['next_steps'] ) ? wp_unslash( $_POST['next_steps'] ) : '',
-		'hours_spent'    => isset( $_POST['hours_spent'] ) ? $_POST['hours_spent'] : 0,
-		'traffic_before' => isset( $_POST['traffic_before'] ) ? $_POST['traffic_before'] : 0,
-		'traffic_after'  => isset( $_POST['traffic_after'] ) ? $_POST['traffic_after'] : 0,
-		'overall_score'  => isset( $_POST['overall_score'] ) ? $_POST['overall_score'] : 0,
-		'status'         => isset( $_POST['status'] ) ? sanitize_key( $_POST['status'] ) : 'draft',
-		'visibility'     => $visibility,
-	);
-
-	$new_id = gv_sr_save_report( $data, $report_id );
-
-	/* کلمات کلیدی */
-	$kw_rows = array();
-	if ( ! empty( $_POST['kw_keyword'] ) && is_array( $_POST['kw_keyword'] ) ) {
-		foreach ( $_POST['kw_keyword'] as $i => $keyword ) {
-			$kw_rows[] = array(
-				'keyword'       => wp_unslash( $keyword ),
-				'search_engine' => wp_unslash( $_POST['kw_engine'][ $i ] ?? 'گوگل' ),
-				'page_url'      => wp_unslash( $_POST['kw_url'][ $i ] ?? '' ),
-				'prev_rank'     => $_POST['kw_prev'][ $i ] ?? 0,
-				'curr_rank'     => $_POST['kw_curr'][ $i ] ?? 0,
-				'note'          => wp_unslash( $_POST['kw_note'][ $i ] ?? '' ),
-			);
-		}
-	}
-	gv_sr_save_keywords( $new_id, $kw_rows );
-
-	/* فعالیت‌های دستیِ اضافه‌شده در همین فرم (علاوه بر ردیف‌های خودکار از «کارکرد من») */
-	$task_rows = array();
-	if ( ! empty( $_POST['task_title'] ) && is_array( $_POST['task_title'] ) ) {
-		foreach ( $_POST['task_title'] as $i => $title ) {
-			$task_rows[] = array(
-				'task_type'      => wp_unslash( $_POST['task_type'][ $i ] ?? 'other' ),
-				'title'          => wp_unslash( $title ),
-				'url'            => wp_unslash( $_POST['task_url'][ $i ] ?? '' ),
-				'target_keyword' => wp_unslash( $_POST['task_keyword'][ $i ] ?? '' ),
-				'work_date'      => gv_sr_read_jalali_post_row( 'task_date', $i ),
-				'hours'          => $_POST['task_hours'][ $i ] ?? 0,
-				'note'           => wp_unslash( $_POST['task_note'][ $i ] ?? '' ),
-			);
-		}
-	}
-	gv_sr_save_tasks( $new_id, $task_rows );
-	gv_sr_recalc_report_hours( $new_id );
-
-	/* رشد صفحات */
-	$growth_rows = array();
-	if ( ! empty( $_POST['growth_metric'] ) && is_array( $_POST['growth_metric'] ) ) {
-		foreach ( $_POST['growth_metric'] as $i => $metric ) {
-			$growth_rows[] = array(
-				'page_title'   => wp_unslash( $_POST['growth_title'][ $i ] ?? '' ),
-				'page_url'     => wp_unslash( $_POST['growth_url'][ $i ] ?? '' ),
-				'metric_label' => wp_unslash( $metric ),
-				'before_value' => wp_unslash( $_POST['growth_before'][ $i ] ?? '' ),
-				'after_value'  => wp_unslash( $_POST['growth_after'][ $i ] ?? '' ),
-				'note'         => wp_unslash( $_POST['growth_note'][ $i ] ?? '' ),
-			);
-		}
-	}
-	gv_sr_save_growth( $new_id, $growth_rows );
-
-	wp_safe_redirect( admin_url( 'admin.php?page=' . GV_SR_PAGE_SLUG . '&tab=view&id=' . $new_id . '&saved=1' ) );
-	exit;
-}
-
 add_action( 'admin_post_gv_sr_delete_report', 'gv_sr_handle_delete_report' );
 function gv_sr_handle_delete_report() {
 	if ( ! current_user_can( 'manage_options' ) ) { wp_die( 'دسترسی ندارید.' ); }
 	check_admin_referer( GV_SR_NONCE );
 	$id = isset( $_GET['id'] ) ? (int) $_GET['id'] : 0;
 	if ( $id > 0 ) { gv_sr_delete_report( $id ); }
-	wp_safe_redirect( admin_url( 'admin.php?page=' . GV_SR_PAGE_SLUG . '&deleted=1' ) );
+	wp_safe_redirect( admin_url( 'admin.php?page=' . GV_SR_PAGE_SLUG . '&tab=list&deleted=1' ) );
 	exit;
 }
 
@@ -2008,10 +1875,14 @@ function gv_sr_handle_save_timelog() {
 
 	$timelog_id = gv_sr_quick_log_work_multi( $data, $activities, $timelog_id );
 
-	/* --- کلمات کلیدی (درج/به‌روزرسانی، بدون حذف کلمات قبلی گزارش) --- */
-	$project = gv_sr_get_project( $data['project_id'] );
-	$report  = $project ? gv_sr_get_or_create_open_report( $project ) : null;
+	/* --- از همان گزارشی استفاده کن که ردیف کارکرد بالا واقعاً به آن وصل شد؛
+	   این دقیقاً همان چیزی است که از ساختن/نوشتن روی یک گزارش دیگر (تکراری)
+	   جلوگیری می‌کند و باعث می‌شود کلمات کلیدی، رشد صفحات، وضعیت انتشار،
+	   خلاصه و اتصال کاربر همگی روی یک گزارش واحد ذخیره شوند. --- */
+	$saved_timelog = gv_sr_get_timelog( $timelog_id );
+	$report        = ( $saved_timelog && (int) $saved_timelog->report_id > 0 ) ? gv_sr_get_report( (int) $saved_timelog->report_id ) : null;
 
+	/* --- کلمات کلیدی (درج/به‌روزرسانی، بدون حذف کلمات قبلی گزارش) --- */
 	if ( $report && ! empty( $_POST['kw_keyword'] ) && is_array( $_POST['kw_keyword'] ) ) {
 		foreach ( $_POST['kw_keyword'] as $i => $keyword ) {
 			if ( '' === trim( (string) $keyword ) ) { continue; }
@@ -2044,6 +1915,19 @@ function gv_sr_handle_save_timelog() {
 			);
 		}
 		gv_sr_add_growth_rows( $report->id, $growth_rows );
+	}
+
+	/* --- انتشار، اتصال به کاربر سایت، و نتیجه‌ی کلی گزارش (وضعیت/خلاصه/گام بعدی) ---
+	   همه‌ی این‌ها از همین فرم واحد «ثبت گزارش» ذخیره می‌شوند؛ دیگر نیازی به
+	   باز کردن یک فرم کاملاً متفاوت («تنظیمات پیشرفته») برای انتشار گزارش یا
+	   تعیین اینکه کدام کاربر سایت این گزارش را می‌بیند، نیست. */
+	if ( $report ) {
+		gv_sr_update_report_extra( $report->id, array(
+			'status'     => isset( $_POST['report_status'] ) ? sanitize_key( $_POST['report_status'] ) : 'draft',
+			'user_id'    => isset( $_POST['report_user_id'] ) ? (int) $_POST['report_user_id'] : (int) $report->user_id,
+			'summary'    => isset( $_POST['summary'] ) ? wp_unslash( $_POST['summary'] ) : '',
+			'next_steps' => isset( $_POST['next_steps'] ) ? wp_unslash( $_POST['next_steps'] ) : '',
+		) );
 	}
 
 	/* --- کنترل نمایش برای مشتری (روی همین گزارش باز) --- */
@@ -2119,6 +2003,81 @@ function gv_sr_handle_save_employee() {
 	wp_safe_redirect( admin_url( 'admin.php?page=' . GV_SR_PAGE_SLUG . '&tab=team&saved_emp=1' ) );
 	exit;
 }
+
+/* ---------------- حذف کارمند (با انتقال یا حذف کامل کارکردهای او) ---------------- */
+/** انتقال تمام کارکردها/عضویت‌های پروژه یک کارمند به کارمند دیگر */
+function gv_sr_transfer_employee_data( $from_id, $to_id ) {
+	global $wpdb;
+	$from_id = (int) $from_id;
+	$to_id   = (int) $to_id;
+	if ( $from_id <= 0 || $to_id <= 0 || $from_id === $to_id ) { return; }
+
+	$wpdb->update( $wpdb->prefix . 'gv_sr_timelogs', array( 'employee_id' => $to_id ), array( 'employee_id' => $from_id ) ); // phpcs:ignore
+
+	$t_m  = $wpdb->prefix . 'gv_sr_project_members';
+	$rows = $wpdb->get_results( $wpdb->prepare( "SELECT * FROM {$t_m} WHERE employee_id = %d", $from_id ) ); // phpcs:ignore
+	foreach ( $rows as $r ) {
+		$exists = $wpdb->get_var( $wpdb->prepare( "SELECT id FROM {$t_m} WHERE project_id = %d AND employee_id = %d", (int) $r->project_id, $to_id ) ); // phpcs:ignore
+		if ( $exists ) {
+			$wpdb->delete( $t_m, array( 'id' => (int) $r->id ) ); // phpcs:ignore
+		} else {
+			$wpdb->update( $t_m, array( 'employee_id' => $to_id ), array( 'id' => (int) $r->id ) ); // phpcs:ignore
+		}
+	}
+
+	$wpdb->update( $wpdb->prefix . 'gv_sr_projects', array( 'manager_employee_id' => $to_id ), array( 'manager_employee_id' => $from_id ) ); // phpcs:ignore
+}
+
+/** حذف کامل تمام کارکردها، فعالیت‌های گزارش مرتبط، و عضویت‌های پروژه یک کارمند */
+function gv_sr_purge_employee_data( $employee_id ) {
+	global $wpdb;
+	$employee_id = (int) $employee_id;
+	if ( $employee_id <= 0 ) { return; }
+
+	$t_log   = $wpdb->prefix . 'gv_sr_timelogs';
+	$t_tasks = $wpdb->prefix . 'gv_sr_tasks';
+
+	$log_ids = $wpdb->get_col( $wpdb->prepare( "SELECT id FROM {$t_log} WHERE employee_id = %d", $employee_id ) ); // phpcs:ignore
+	if ( ! empty( $log_ids ) ) {
+		$ids_sql = implode( ',', array_map( 'intval', $log_ids ) );
+		$affected_reports = $wpdb->get_col( "SELECT DISTINCT report_id FROM {$t_tasks} WHERE source_timelog_id IN ({$ids_sql}) AND report_id > 0" ); // phpcs:ignore
+		$wpdb->query( "DELETE FROM {$t_tasks} WHERE source_timelog_id IN ({$ids_sql})" ); // phpcs:ignore
+		$wpdb->query( "DELETE FROM {$t_log} WHERE id IN ({$ids_sql})" ); // phpcs:ignore
+		foreach ( $affected_reports as $rid ) { gv_sr_recalc_report_hours( (int) $rid ); }
+	}
+
+	$wpdb->delete( $wpdb->prefix . 'gv_sr_project_members', array( 'employee_id' => $employee_id ) ); // phpcs:ignore
+	$wpdb->update( $wpdb->prefix . 'gv_sr_projects', array( 'manager_employee_id' => 0 ), array( 'manager_employee_id' => $employee_id ) ); // phpcs:ignore
+}
+
+add_action( 'admin_post_gv_sr_delete_employee', 'gv_sr_handle_delete_employee' );
+function gv_sr_handle_delete_employee() {
+	if ( ! current_user_can( 'manage_options' ) || ! gv_sr_team_is_authed() ) { wp_die( 'دسترسی ندارید.' ); }
+	check_admin_referer( GV_SR_TEAM_NONCE );
+
+	$employee_id = isset( $_POST['employee_id'] ) ? (int) $_POST['employee_id'] : 0;
+	$mode        = isset( $_POST['delete_mode'] ) ? sanitize_key( $_POST['delete_mode'] ) : 'delete_all';
+	$target_id   = isset( $_POST['transfer_to'] ) ? (int) $_POST['transfer_to'] : 0;
+
+	if ( $employee_id <= 0 ) {
+		wp_safe_redirect( admin_url( 'admin.php?page=' . GV_SR_PAGE_SLUG . '&tab=team' ) );
+		exit;
+	}
+
+	if ( 'transfer' === $mode && $target_id > 0 ) {
+		gv_sr_transfer_employee_data( $employee_id, $target_id );
+	} else {
+		gv_sr_purge_employee_data( $employee_id );
+	}
+
+	global $wpdb;
+	$wpdb->delete( $wpdb->prefix . 'gv_sr_active_timers', array( 'employee_id' => $employee_id ) ); // phpcs:ignore
+	$wpdb->delete( $wpdb->prefix . 'gv_sr_employees', array( 'id' => $employee_id ) ); // phpcs:ignore
+
+	wp_safe_redirect( admin_url( 'admin.php?page=' . GV_SR_PAGE_SLUG . '&tab=team&emp_deleted=1' ) );
+	exit;
+}
+
 add_action( 'admin_post_gv_sr_team_change_pass', 'gv_sr_handle_team_change_pass' );
 function gv_sr_handle_team_change_pass() {
 	if ( ! current_user_can( 'manage_options' ) || ! gv_sr_team_is_authed() ) { wp_die( 'دسترسی ندارید.' ); }
@@ -2430,37 +2389,63 @@ function gv_sr_render_top_bar() {
 	<?php
 }
 
+/**
+ * هندلر سراسری اینتر: جلوگیری از ثبت ناخواسته‌ی فرم با زدن Enter وسط یک
+ * فیلد متنی. فقط داخل input های تک‌خطی غیرفعال می‌شود؛ دکمه‌ها،
+ * چک‌باکس‌ها و textarea ها دست‌نخورده می‌مانند.
+ */
+function gv_sr_render_global_scripts() {
+	?>
+	<script>
+	document.addEventListener('keydown', function (e) {
+		if (e.key !== 'Enter') { return; }
+		var el = e.target;
+		if (!el || !el.tagName) { return; }
+		if (el.tagName === 'TEXTAREA' || el.tagName === 'SELECT') { return; }
+		if (el.tagName === 'INPUT') {
+			var skip = ['submit', 'button', 'checkbox', 'radio', 'file'];
+			if (skip.indexOf(el.type) !== -1) { return; }
+			e.preventDefault();
+		}
+	});
+	</script>
+	<?php
+}
+
 function gv_sr_render_admin_page() {
 	if ( ! current_user_can( 'manage_options' ) ) { return; }
-	$tab = isset( $_GET['tab'] ) ? sanitize_key( $_GET['tab'] ) : 'list';
-	$client_tabs = array( 'list', 'edit', 'view', 'quickreport' );
+	/* پیش‌فرض صفحه اکنون «➕ ثبت گزارش» است، نه لیست گزارش‌ها — تا ثبت یک
+	   گزارش جدید سریع‌تر انجام شود و کارمند/مدیر مجبور نباشد اول از لیست
+	   عبور کند. */
+	$tab = isset( $_GET['tab'] ) ? sanitize_key( $_GET['tab'] ) : 'quickreport';
 
 	echo '<div class="wrap" dir="rtl" style="font-family: Tahoma, sans-serif;">';
 	gv_sr_admin_styles();
 
 	gv_sr_render_top_bar();
+	gv_sr_render_global_scripts();
+	gv_sr_render_ux_assets();
 
 	echo '<div class="gvsr-header">';
 	echo '<div><h1>📑 گزارش عملکرد سئو — Groot Vision</h1><span>گزارش دوره‌ای مشتری + مدیریت کارکرد و حقوق تیم سئو</span></div>';
-	if ( in_array( $tab, $client_tabs, true ) && 'list' !== $tab ) {
-		echo '<a class="gvsr-btn-ghost" href="' . esc_url( admin_url( 'admin.php?page=' . GV_SR_PAGE_SLUG ) ) . '">← بازگشت به لیست گزارش‌ها</a>';
-	} elseif ( 'list' === $tab ) {
-		echo '<a class="gvsr-btn-export" href="' . esc_url( admin_url( 'admin.php?page=' . GV_SR_PAGE_SLUG . '&tab=quickreport' ) ) . '">➕ ثبت گزارش</a>';
+	if ( 'view' === $tab ) {
+		echo '<a class="gvsr-btn-ghost" href="' . esc_url( admin_url( 'admin.php?page=' . GV_SR_PAGE_SLUG . '&tab=list' ) ) . '">← بازگشت به لیست گزارش‌ها</a>';
 	}
 	echo '</div>';
 
-	$maintab = in_array( $tab, array( 'my', 'team', 'projects' ), true ) ? $tab : 'list';
+	$maintab = in_array( $tab, array( 'quickreport', 'my', 'team', 'projects' ), true ) ? $tab : 'list';
 	echo '<div class="gvsr-maintabs">';
-	echo '<a class="gvsr-maintab' . ( 'list' === $maintab ? ' is-active' : '' ) . '" href="' . esc_url( admin_url( 'admin.php?page=' . GV_SR_PAGE_SLUG ) ) . '">📋 گزارش‌های مشتری</a>';
+	echo '<a class="gvsr-maintab' . ( 'quickreport' === $maintab ? ' is-active' : '' ) . '" href="' . esc_url( admin_url( 'admin.php?page=' . GV_SR_PAGE_SLUG . '&tab=quickreport' ) ) . '">➕ ثبت گزارش</a>';
+	echo '<a class="gvsr-maintab' . ( 'list' === $maintab ? ' is-active' : '' ) . '" href="' . esc_url( admin_url( 'admin.php?page=' . GV_SR_PAGE_SLUG . '&tab=list' ) ) . '">📋 گزارش‌های مشتری</a>';
 	echo '<a class="gvsr-maintab' . ( 'my' === $maintab ? ' is-active' : '' ) . '" href="' . esc_url( admin_url( 'admin.php?page=' . GV_SR_PAGE_SLUG . '&tab=my' ) ) . '">🕒 کارکرد من</a>';
 	echo '<a class="gvsr-maintab' . ( 'team' === $maintab ? ' is-active' : '' ) . '" href="' . esc_url( admin_url( 'admin.php?page=' . GV_SR_PAGE_SLUG . '&tab=team' ) ) . '">👥 مدیریت تیم (ویژه مدیر)</a>';
 	echo '<a class="gvsr-maintab' . ( 'projects' === $maintab ? ' is-active' : '' ) . '" href="' . esc_url( admin_url( 'admin.php?page=' . GV_SR_PAGE_SLUG . '&tab=projects' ) ) . '">🗂️ پروژه‌ها</a>';
 	echo '</div>';
 
-	if ( isset( $_GET['saved'] ) ) { echo '<div class="gvsr-notice">گزارش با موفقیت ذخیره شد.</div>'; }
 	if ( isset( $_GET['deleted'] ) ) { echo '<div class="gvsr-notice">گزارش حذف شد.</div>'; }
 	if ( isset( $_GET['saved_log'] ) ) { echo '<div class="gvsr-notice">✅ گزارش ثبت شد و به‌صورت خودکار در شیت «کارکرد من» شما هم اضافه شد.</div>'; }
 	if ( isset( $_GET['saved_emp'] ) ) { echo '<div class="gvsr-notice">اطلاعات کارمند ذخیره شد.</div>'; }
+	if ( isset( $_GET['emp_deleted'] ) ) { echo '<div class="gvsr-notice">کارمند حذف شد.</div>'; }
 	if ( isset( $_GET['pass_changed'] ) ) { echo '<div class="gvsr-notice">رمز عبور بخش مدیریت تیم تغییر کرد.</div>'; }
 	if ( isset( $_GET['err'] ) && 'noemp' === $_GET['err'] ) { echo '<div class="gvsr-notice" style="background:#fee2e2;color:#b91c1c;border-color:#fca5a5;">ابتدا باید مشخص کنید چه کسی هستید.</div>'; }
 	if ( isset( $_GET['err'] ) && 'noproject' === $_GET['err'] ) { echo '<div class="gvsr-notice" style="background:#fee2e2;color:#b91c1c;border-color:#fca5a5;">لطفاً ابتدا یک پروژه انتخاب کنید.</div>'; }
@@ -2473,16 +2458,14 @@ function gv_sr_render_admin_page() {
 		gv_sr_render_projects_tab();
 	} elseif ( 'team' === $tab ) {
 		gv_sr_render_team_tab();
-	} elseif ( 'edit' === $tab ) {
-		$id     = isset( $_GET['id'] ) ? (int) $_GET['id'] : 0;
-		$report = $id > 0 ? gv_sr_get_report( $id ) : null;
-		gv_sr_render_admin_form( $report );
 	} elseif ( 'view' === $tab ) {
 		$id     = isset( $_GET['id'] ) ? (int) $_GET['id'] : 0;
 		$report = gv_sr_get_report( $id );
 		if ( $report ) {
 			echo '<div class="gvsr-preview-tools">';
-			echo '<a class="gvsr-btn-ghost" href="' . esc_url( admin_url( 'admin.php?page=' . GV_SR_PAGE_SLUG . '&tab=edit&id=' . $id ) ) . '">✏️ ویرایش کامل گزارش</a>';
+			if ( $report->project_id > 0 ) {
+				echo '<a class="gvsr-btn-export" href="' . esc_url( admin_url( 'admin.php?page=' . GV_SR_PAGE_SLUG . '&tab=quickreport&project_id=' . $report->project_id ) ) . '">✏️ ویرایش / انتشار گزارش</a>';
+			}
 			echo '<a class="gvsr-btn-ghost" href="' . esc_url( wp_nonce_url( admin_url( 'admin-post.php?action=gv_sr_export_tasks_csv&id=' . $id ), GV_SR_NONCE ) ) . '">📥 خروجی CSV فعالیت‌ها</a>';
 			echo '<span class="gvsr-hint-inline">این پیش‌نمایش دقیقاً همان چیزی است که مشتری می‌بیند؛ بخش‌های مخفی با برچسب قرمز مشخص شده‌اند.</span>';
 			echo '</div>';
@@ -2517,6 +2500,7 @@ function gv_sr_render_admin_list() {
 
 	<form method="get" class="gvsr-filter-bar">
 		<input type="hidden" name="page" value="<?php echo esc_attr( GV_SR_PAGE_SLUG ); ?>">
+		<input type="hidden" name="tab" value="list">
 		<input type="text" name="s" value="<?php echo esc_attr( $search ); ?>" placeholder="جست‌وجوی مشتری یا عنوان گزارش...">
 		<select name="status">
 			<option value="">همه وضعیت‌ها</option>
@@ -2567,7 +2551,9 @@ function gv_sr_render_admin_list() {
 						</td>
 						<td class="gvsr-row-actions">
 							<a href="<?php echo esc_url( admin_url( 'admin.php?page=' . GV_SR_PAGE_SLUG . '&tab=view&id=' . $r->id ) ); ?>">مشاهده</a>
-							<a href="<?php echo esc_url( admin_url( 'admin.php?page=' . GV_SR_PAGE_SLUG . '&tab=edit&id=' . $r->id ) ); ?>">ویرایش کامل</a>
+							<?php if ( $r->project_id > 0 ) : ?>
+								<a href="<?php echo esc_url( admin_url( 'admin.php?page=' . GV_SR_PAGE_SLUG . '&tab=quickreport&project_id=' . $r->project_id ) ); ?>">ویرایش / انتشار</a>
+							<?php endif; ?>
 							<a class="gvsr-danger" onclick="return confirm('این گزارش برای همیشه حذف می‌شود. ادامه می‌دهید؟');" href="<?php echo esc_url( wp_nonce_url( admin_url( 'admin-post.php?action=gv_sr_delete_report&id=' . $r->id ), GV_SR_NONCE ) ); ?>">حذف</a>
 						</td>
 					</tr>
@@ -2610,7 +2596,7 @@ function gv_sr_render_my_tab() {
 	?>
 	<div class="gvsr-preview-tools">
 		<a class="gvsr-btn-export" href="<?php echo esc_url( admin_url( 'admin.php?page=' . GV_SR_PAGE_SLUG . '&tab=quickreport' ) ); ?>">➕ ثبت گزارش جدید</a>
-		<span class="gvsr-hint-inline">ثبت گزارش از تب «📋 گزارش‌های مشتری → ➕ ثبت گزارش» انجام می‌شود و خودکار همین‌جا هم اضافه می‌شود.</span>
+		<span class="gvsr-hint-inline">ثبت گزارش از تب «➕ ثبت گزارش» انجام می‌شود و خودکار همین‌جا هم اضافه می‌شود.</span>
 	</div>
 
 	<div class="gvsr-kpi-grid" style="grid-template-columns:repeat(3,1fr);max-width:1100px;">
@@ -2671,7 +2657,9 @@ function gv_sr_render_my_tab() {
    ۸.۱.۱) تب «➕ ثبت گزارش» — نقطه‌ی واحد ورود گزارش (پروژه + فعالیت + ساعت شروع/پایان)
    ------------------------------------------------------------------------
    کارمند این‌جا گزارش را ثبت می‌کند؛ خودکار هم در گزارش سئوی مشتری و هم در
-   شیت «کارکرد من» او ثبت می‌شود — دیگر نیازی به ورود دوباره نیست.
+   شیت «کارکرد من» او ثبت می‌شود — دیگر نیازی به ورود دوباره نیست. اتصال به
+   کاربر سایت (اینکه مشتری با کدام حساب این گزارش را می‌بیند) هم از همین
+   فرم قابل تنظیم است، بدون نیاز به یک صفحه‌ی جداگانه‌ی «تنظیمات پیشرفته».
    ========================================================================== */
 function gv_sr_render_quick_report_tab() {
 	$emp = gv_sr_current_employee();
@@ -2704,13 +2692,26 @@ function gv_sr_render_quick_report_tab() {
 		}
 	}
 
-	if ( isset( $_GET['saved_log'] ) ) { echo '<div class="gvsr-notice">✅ گزارش ثبت شد و به‌صورت خودکار در شیت «کارکرد من» شما هم اضافه شد.</div>'; }
+	/* توجه: پیام «گزارش ثبت شد» فقط یک‌بار — در gv_sr_render_admin_page —
+	   چاپ می‌شود. اینجا دوباره چاپ نمی‌کنیم تا پیام دوبار تکرار نشود. */
 
-	/* مقادیر پیش‌فرض ساعت شروع/پایان: اگر در حال ویرایش هستیم از مقدار قبلی، وگرنه از همین لحظه به عقب */
+	/* مقادیر پیش‌فرض ساعت شروع/پایان: اگر در حال ویرایش هستیم از مقدار قبلی
+	   (یا اگر ثبت قبلی به‌صورت دستی و بدون ساعت شروع/پایان بوده، بازه‌ای
+	   معادل همان مقدار ساعت پیشنهاد می‌شود تا هنگام ویرایش، ساعت کارکرد
+	   صفر نشود)، وگرنه از همین لحظه به عقب. */
 	$def_start_h = 0; $def_start_m = 0; $def_end_h = 0; $def_end_m = 0;
 	if ( $editing && $editing->start_time && $editing->end_time ) {
 		list( $def_start_h, $def_start_m ) = array_map( 'intval', explode( ':', $editing->start_time ) );
 		list( $def_end_h, $def_end_m )     = array_map( 'intval', explode( ':', $editing->end_time ) );
+	} elseif ( $editing && $editing->hours > 0 ) {
+		$now_parts   = explode( ':', current_time( 'H:i' ) );
+		$def_end_h   = (int) $now_parts[0];
+		$def_end_m   = (int) $now_parts[1];
+		$total_min   = (int) round( $editing->hours * 60 );
+		$start_min   = ( $def_end_h * 60 + $def_end_m ) - $total_min;
+		if ( $start_min < 0 ) { $start_min += 24 * 60; }
+		$def_start_h = intdiv( $start_min, 60 );
+		$def_start_m = $start_min % 60;
 	} else {
 		$now_parts   = explode( ':', current_time( 'H:i' ) );
 		$def_end_h   = (int) $now_parts[0];
@@ -2719,7 +2720,15 @@ function gv_sr_render_quick_report_tab() {
 		$def_start_m = $def_end_m;
 	}
 
-	$selected_project_id = $editing ? (int) $editing->project_id : ( isset( $my_projects[0] ) ? (int) $my_projects[0]->id : 0 );
+	if ( $editing ) {
+		$selected_project_id = (int) $editing->project_id;
+	} elseif ( isset( $_GET['project_id'] ) ) {
+		/* اجازه می‌دهد لینک «ویرایش / انتشار» از لیست گزارش‌ها، مستقیماً همین پروژه را
+		   در فرم انتخاب کند — تا دیگر نیازی به صفحه‌ی جدای «ویرایش کامل» نباشد. */
+		$selected_project_id = (int) $_GET['project_id'];
+	} else {
+		$selected_project_id = isset( $my_projects[0] ) ? (int) $my_projects[0]->id : 0;
+	}
 
 	/* دیکشنری کلمات کلیدی قبلی هر پروژه (برای انتخاب سریع + پرکردن خودکار رتبه‌ی قبلی) */
 	$kw_memory_by_project = array();
@@ -2727,11 +2736,26 @@ function gv_sr_render_quick_report_tab() {
 		$kw_memory_by_project[ $pj->id ] = gv_sr_get_project_recent_keywords( $pj->id );
 	}
 
-	/* پیش‌مقداردهی کنترل نمایش از گزارشِ باز فعلی (اگر وجود دارد)، وگرنه پیش‌فرض افزونه */
-	$peek_project  = $selected_project_id ? gv_sr_get_project( $selected_project_id ) : null;
-	$peek_report   = $peek_project ? gv_sr_peek_open_report( $peek_project ) : null;
-	$visibility    = $peek_report ? gv_sr_get_visibility( $peek_report ) : gv_sr_default_visibility();
-	$task_types    = gv_sr_task_types();
+	/* پیش‌مقداردهی: اگر در حال ویرایش یک ردیف کارکرد قبلی هستیم، از همان
+	   گزارشی که آن ردیف واقعاً به آن متصل است بخوان (نه لزوماً گزارش «ماه
+	   جاری»)، تا با ویرایش، تنظیمات یک گزارش دیگر خوانده یا بازنویسی نشود.
+	   برای ثبتِ کاملاً تازه، از گزارش بازِ همین ماهِ پروژه (چه پیش‌نویس، چه
+	   منتشرشده) پیش‌مقداردهی می‌شود. */
+	if ( $editing && (int) $editing->report_id > 0 ) {
+		$peek_report  = gv_sr_get_report( (int) $editing->report_id );
+		$peek_project = $peek_report && (int) $peek_report->project_id > 0
+			? gv_sr_get_project( (int) $peek_report->project_id )
+			: ( $selected_project_id ? gv_sr_get_project( $selected_project_id ) : null );
+	} else {
+		$peek_project = $selected_project_id ? gv_sr_get_project( $selected_project_id ) : null;
+		$peek_report  = $peek_project ? gv_sr_peek_open_report( $peek_project ) : null;
+	}
+	$visibility          = $peek_report ? gv_sr_get_visibility( $peek_report ) : gv_sr_default_visibility();
+	$report_status_val   = $peek_report ? $peek_report->status : 'draft';
+	$report_user_id_val  = $peek_report ? (int) $peek_report->user_id : ( $peek_project ? (int) $peek_project->user_id : 0 );
+	$report_summary_v    = $peek_report ? $peek_report->summary : '';
+	$report_next_v       = $peek_report ? $peek_report->next_steps : '';
+	$task_types          = gv_sr_task_types();
 	?>
 	<div class="gvsr-quicklog-wrap" style="grid-template-columns:1fr 220px;">
 		<div>
@@ -2794,7 +2818,7 @@ function gv_sr_render_quick_report_tab() {
 								</tbody>
 							</table>
 							<button type="button" class="gvsr-btn-add" data-target="gvsr-repeater-activity">➕ افزودن فعالیت دیگر</button>
-							<p class="gvsr-hint" style="margin-top:6px;">ساعتی که پایین‌تر وارد می‌کنید، ساعت کل کاری امروز است و بین همه‌ی فعالیت‌های بالا تقسیم می‌شود.</p>
+							<p class="gvsr-hint" style="margin-top:6px;">ساعتی که پایین‌تر وارد می‌کنید، ساعت کل کاری امروز است و بین همه‌ی فعالیت‌های بالا تقسیم می‌شود. اگر برای فعالیتی توضیح ننویسید، آن ردیف اصلاً در گزارش مشتری ثبت نمی‌شود.</p>
 						</div>
 					</div>
 
@@ -2833,7 +2857,7 @@ function gv_sr_render_quick_report_tab() {
 						<span class="gvsr-ql-step-num">۴</span>
 						<div class="gvsr-ql-step-body">
 							<label class="gvsr-ql-label">🔑 کلمات کلیدی و تغییر رتبه (اختیاری)</label>
-							<p class="gvsr-hint">رتبه ۰ یعنی «خارج از ۱۰۰». برای کلمه‌ای که قبلاً ثبت کرده‌اید، اسمش را بنویسید تا رتبه‌ی قبلی خودکار پر شود.</p>
+							<p class="gvsr-hint">اگر رتبه فعلی را خالی بگذارید، برای مشتری به‌صورت «کلمه کلیدی تازه وارد» نمایش داده می‌شود. برای کلمه‌ای که قبلاً ثبت کرده‌اید، اسمش را بنویسید تا رتبه‌ی قبلی خودکار پر شود.</p>
 							<table class="gvsr-repeater" id="gvsr-repeater-kw">
 								<thead><tr>
 									<th style="width:22%;">کلمه کلیدی</th>
@@ -2897,7 +2921,7 @@ function gv_sr_render_quick_report_tab() {
 						<span class="gvsr-ql-step-num">۶</span>
 						<div class="gvsr-ql-step-body">
 							<label class="gvsr-ql-label">👁️ چه چیزی برای مشتری نمایش داده شود؟</label>
-							<p class="gvsr-hint">این تنظیم روی گزارش این ماه همین پروژه اعمال می‌شود.</p>
+							<p class="gvsr-hint">این تنظیم روی گزارش این ماه همین پروژه اعمال می‌شود. ساعت کارکرد و نام کارمندان صرف‌نظر از این تیک، هرگز برای مشتری نمایش داده نمی‌شوند.</p>
 							<div class="gvsr-vis-grid">
 								<?php foreach ( gv_sr_visibility_keys() as $key => $label ) : ?>
 									<label class="gvsr-vis-item">
@@ -2906,6 +2930,41 @@ function gv_sr_render_quick_report_tab() {
 									</label>
 								<?php endforeach; ?>
 							</div>
+						</div>
+					</div>
+
+					<!-- گام ۷: انتشار، اتصال کاربر سایت، و نتیجه‌ی کلی گزارش -->
+					<div class="gvsr-ql-step">
+						<span class="gvsr-ql-step-num">۷</span>
+						<div class="gvsr-ql-step-body">
+							<label class="gvsr-ql-label">🚀 انتشار و اتصال گزارشِ این پروژه در این ماه</label>
+							<p class="gvsr-hint">این بخش مربوط به کل گزارشِ این ماهِ همین پروژه است (نه فقط همین یک فعالیت). تا وقتی «پیش‌نویس» بماند مشتری هیچ‌چیز نمی‌بیند؛ با انتخاب «منتشرشده» بلافاصله در پنل مشتری قابل مشاهده می‌شود.</p>
+
+							<div class="gvsr-grid-2" style="margin-bottom:12px;">
+								<label>وضعیت گزارش
+									<select name="report_status" class="gvsr-ql-field">
+										<option value="draft" <?php selected( $report_status_val, 'draft' ); ?>>پیش‌نویس (فقط داخلی)</option>
+										<option value="published" <?php selected( $report_status_val, 'published' ); ?>>✅ منتشرشده (مشتری می‌بیند)</option>
+									</select>
+								</label>
+								<label>اتصال به کاربر سایت (برای ورود مشتری به پنل)
+									<?php
+									wp_dropdown_users( array(
+										'name'              => 'report_user_id',
+										'show_option_none'  => '— بدون اتصال —',
+										'option_none_value' => 0,
+										'selected'          => $report_user_id_val,
+										'class'             => 'gvsr-ql-field gvsr-select',
+									) );
+									?>
+								</label>
+							</div>
+							<label>خلاصه عملکرد (برای مشتری)
+								<textarea name="summary" rows="3" class="gvsr-ql-field" placeholder="در این بازه چه اقداماتی انجام شد و نتیجه کلی چه بود؟"><?php echo esc_textarea( $report_summary_v ); ?></textarea>
+							</label>
+							<label>برنامه گام بعدی
+								<textarea name="next_steps" rows="3" class="gvsr-ql-field" placeholder="برنامه و اولویت‌های بازه بعدی چیست؟"><?php echo esc_textarea( $report_next_v ); ?></textarea>
+							</label>
 						</div>
 					</div>
 
@@ -2974,7 +3033,9 @@ function gv_sr_render_quick_report_tab() {
 				if (tbody.querySelectorAll('tr').length > 1) {
 					e.target.closest('tr').remove();
 				} else {
-					e.target.closest('tr').querySelectorAll('input[type="text"], input[type="url"], input[type="number"]').forEach(function (el) { el.value = ''; });
+					var row = e.target.closest('tr');
+					row.querySelectorAll('input[type="text"], input[type="url"], input[type="number"]').forEach(function (el) { el.value = ''; });
+					row.querySelectorAll('select').forEach(function (el) { el.selectedIndex = 0; });
 				}
 			}
 		});
@@ -3062,12 +3123,59 @@ function gv_sr_render_team_tab() {
 	echo '<a class="gvsr-btn-ghost" href="' . esc_url( wp_nonce_url( admin_url( 'admin-post.php?action=gv_sr_team_logout' ), GV_SR_TEAM_NONCE ) ) . '">🚪 خروج</a>';
 	echo '<span class="gvsr-hint-inline">کارمندان به این بخش دسترسی ندارند.</span>';
 	echo '</div>';
+	gv_sr_render_team_showcase( gv_sr_get_employees( true ) );
 
+	if ( isset( $_GET['emp_deleted'] ) ) { echo '<div class="gvsr-notice">کارمند حذف شد.</div>'; }
+
+	/* ============ ناوبری کارتی: کلیک روی هر کارت به همان بخش اسکرول می‌کند ============ */
+	$employees_count = count( gv_sr_get_employees() );
+	?>
+	<div class="gvsr-nav-cards" id="gvsr-team-nav">
+		<button type="button" class="gvsr-nav-card" data-target="gvsr-sec-employees">
+			<span class="gvsr-nav-card-icon">👥</span>
+			<span class="gvsr-nav-card-title">کارمندان تیم</span>
+			<span class="gvsr-nav-card-desc">افزودن، ویرایش و حذف کارمندان (<?php echo esc_html( number_format_i18n( $employees_count ) ); ?> نفر)</span>
+		</button>
+		<button type="button" class="gvsr-nav-card" data-target="gvsr-sec-period">
+			<span class="gvsr-nav-card-icon">📅</span>
+			<span class="gvsr-nav-card-title">بازه گزارش‌گیری</span>
+			<span class="gvsr-nav-card-desc">انتخاب بازه‌ی تاریخ برای بقیه‌ی بخش‌ها</span>
+		</button>
+		<button type="button" class="gvsr-nav-card" data-target="gvsr-sec-salary">
+			<span class="gvsr-nav-card-icon">💰</span>
+			<span class="gvsr-nav-card-title"><?php echo $is_super ? 'حقوق و ساعت کارکرد' : 'ساعت کارکرد تیم'; ?></span>
+			<span class="gvsr-nav-card-desc">جدول تفکیک‌شده به ازای هر کارمند</span>
+		</button>
+		<button type="button" class="gvsr-nav-card" data-target="gvsr-sec-seo">
+			<span class="gvsr-nav-card-icon">📈</span>
+			<span class="gvsr-nav-card-title">خلاصه جامع سئو</span>
+			<span class="gvsr-nav-card-desc">آمار محتوا و کلمات کلیدی کل مشتریان</span>
+		</button>
+		<button type="button" class="gvsr-nav-card" data-target="gvsr-sec-daily">
+			<span class="gvsr-nav-card-icon">🗒️</span>
+			<span class="gvsr-nav-card-title">ریز کارکرد روزانه</span>
+			<span class="gvsr-nav-card-desc">کارکرد هر کارمند به تفکیک روز، قابل حذف</span>
+		</button>
+		<button type="button" class="gvsr-nav-card" data-target="gvsr-sec-password">
+			<span class="gvsr-nav-card-icon">🔑</span>
+			<span class="gvsr-nav-card-title">تغییر رمز عبور من</span>
+			<span class="gvsr-nav-card-desc">تغییر رمز عبور حساب مدیریتی شما</span>
+		</button>
+		<?php if ( $is_super ) : ?>
+		<button type="button" class="gvsr-nav-card" data-target="gvsr-sec-admins">
+			<span class="gvsr-nav-card-icon">👑</span>
+			<span class="gvsr-nav-card-title">حساب‌های مدیریتی</span>
+			<span class="gvsr-nav-card-desc">افزودن/حذف مدیر تیم سئو و مدیر اصلی</span>
+		</button>
+		<?php endif; ?>
+	</div>
+
+	<?php
 	$editing_emp = isset( $_GET['edit_emp'] ) ? gv_sr_get_employee( (int) $_GET['edit_emp'] ) : null;
 	$employees   = gv_sr_get_employees();
 	$open_emp_section = $editing_emp || empty( $employees );
 	?>
-	<details class="gvsr-section-toggle" <?php echo $open_emp_section ? 'open' : ''; ?>>
+	<details class="gvsr-section-toggle" id="gvsr-sec-employees" <?php echo $open_emp_section ? 'open' : ''; ?>>
 		<summary>👥 کارمندان تیم سئو <span class="gvsr-toggle-count">(<?php echo esc_html( number_format_i18n( count( $employees ) ) ); ?> نفر)</span></summary>
 		<div class="gvsr-section-toggle-body">
 			<div class="gvsr-table-wrap" style="max-width:100%;margin-bottom:16px;">
@@ -3086,7 +3194,10 @@ function gv_sr_render_team_tab() {
 								<?php endif; ?>
 								<td><?php echo (int) $e->active === 1 ? '<span class="gvsr-badge gvsr-badge-green">فعال</span>' : '<span class="gvsr-badge gvsr-badge-gray">غیرفعال</span>'; ?></td>
 								<td><?php echo esc_html( gv_sr_fa_digits( gv_sr_employee_total_hours( $e->id ) ) ); ?></td>
-								<td class="gvsr-row-actions"><a href="<?php echo esc_url( admin_url( 'admin.php?page=' . GV_SR_PAGE_SLUG . '&tab=team&edit_emp=' . $e->id ) ); ?>">ویرایش</a></td>
+								<td class="gvsr-row-actions">
+									<a href="<?php echo esc_url( admin_url( 'admin.php?page=' . GV_SR_PAGE_SLUG . '&tab=team&edit_emp=' . $e->id ) ); ?>">ویرایش</a>
+									<a class="gvsr-danger gvsr-emp-delete-trigger" href="#" data-emp-id="<?php echo esc_attr( $e->id ); ?>" data-emp-name="<?php echo esc_attr( $e->name ); ?>">حذف</a>
+								</td>
 							</tr>
 						<?php endforeach; ?>
 						</tbody>
@@ -3128,32 +3239,59 @@ function gv_sr_render_team_tab() {
 		</div>
 	</details>
 
+	<!-- ============ مودال حذف کارمند: انتقال یا حذف کامل کارکردها ============ -->
+	<div id="gvsr-emp-delete-modal" class="gvsr-timer-modal" style="display:none;">
+		<div class="gvsr-timer-modal-box" style="max-width:440px;text-align:right;">
+			<p style="text-align:center;">⚠️ حذف کارمند «<b id="gvsr-emp-delete-name"></b>»<br><span style="font-size:12px;color:var(--gv-ink-soft);">قبل از حذف مشخص کنید با کارکردها و گزارش‌های ثبت‌شده‌ی این کارمند چه شود.</span></p>
+			<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>">
+				<?php wp_nonce_field( GV_SR_TEAM_NONCE ); ?>
+				<input type="hidden" name="action" value="gv_sr_delete_employee">
+				<input type="hidden" name="employee_id" id="gvsr-emp-delete-id" value="">
+				<label class="gvsr-vis-item" style="margin-bottom:8px;">
+					<input type="radio" name="delete_mode" value="transfer" checked style="width:auto!important;">
+					انتقال کارکردها و گزارش‌ها به کارمند دیگر
+				</label>
+				<select name="transfer_to" id="gvsr-emp-delete-target" class="gvsr-select" style="margin-bottom:12px;"></select>
+				<label class="gvsr-vis-item" style="margin-bottom:14px;">
+					<input type="radio" name="delete_mode" value="delete_all" style="width:auto!important;">
+					حذف کامل تمام کارکردها و گزارش‌های این کارمند (غیرقابل بازگشت)
+				</label>
+				<div class="gvsr-timer-modal-actions">
+					<button type="submit" class="gvsr-btn-export" style="background:#fee2e2;color:#b91c1c;">🗑 حذف نهایی کارمند</button>
+					<button type="button" class="gvsr-btn-ghost" id="gvsr-emp-delete-cancel">انصراف</button>
+				</div>
+			</form>
+		</div>
+	</div>
+
 	<?php
 	list( $default_from, $default_to ) = gv_sr_current_jalali_month_bounds();
 	$from        = isset( $_GET['from_jy'] ) ? gv_sr_read_jalali_get( 'from', $default_from ) : $default_from;
 	$to          = isset( $_GET['to_jy'] ) ? gv_sr_read_jalali_get( 'to', $default_to ) : $default_to;
 	$filter_emp  = isset( $_GET['employee_id'] ) ? (int) $_GET['employee_id'] : 0;
 	?>
-	<div class="gvsr-report-card gvsr-my-filter-card">
-		<h3>📅 بازه گزارش‌گیری کارکرد تیم</h3>
-		<form method="get" class="gvsr-filter-bar" style="align-items:flex-end;">
-			<input type="hidden" name="page" value="<?php echo esc_attr( GV_SR_PAGE_SLUG ); ?>">
-			<input type="hidden" name="tab" value="team">
-			<label style="margin:0;">از تاریخ<?php echo gv_sr_jalali_select_fields( 'from', $from ); ?></label>
-			<label style="margin:0;">تا تاریخ<?php echo gv_sr_jalali_select_fields( 'to', $to ); ?></label>
-			<label style="margin:0;">کارمند
-				<select name="employee_id" class="gvsr-select">
-					<option value="0">همه کارمندان</option>
-					<?php foreach ( $employees as $e ) : ?>
-						<option value="<?php echo esc_attr( $e->id ); ?>" <?php selected( $filter_emp, (int) $e->id ); ?>><?php echo esc_html( $e->name ); ?></option>
-					<?php endforeach; ?>
-				</select>
-			</label>
-			<button type="submit" class="gvsr-btn-ghost">اعمال</button>
-			<a class="gvsr-btn-ghost" href="<?php echo esc_url( admin_url( 'admin.php?page=' . GV_SR_PAGE_SLUG . '&tab=team' ) ); ?>">بازه ماه جاری</a>
-		</form>
-		<p class="gvsr-hint">پیش‌فرض، بازه از اول تا آخر ماه شمسی جاری است.</p>
-	</div>
+	<details class="gvsr-section-toggle" id="gvsr-sec-period">
+		<summary>📅 بازه گزارش‌گیری کارکرد تیم</summary>
+		<div class="gvsr-section-toggle-body">
+			<form method="get" class="gvsr-filter-bar" style="align-items:flex-end;margin-bottom:0;">
+				<input type="hidden" name="page" value="<?php echo esc_attr( GV_SR_PAGE_SLUG ); ?>">
+				<input type="hidden" name="tab" value="team">
+				<label style="margin:0;">از تاریخ<?php echo gv_sr_jalali_select_fields( 'from', $from ); ?></label>
+				<label style="margin:0;">تا تاریخ<?php echo gv_sr_jalali_select_fields( 'to', $to ); ?></label>
+				<label style="margin:0;">کارمند
+					<select name="employee_id" class="gvsr-select">
+						<option value="0">همه کارمندان</option>
+						<?php foreach ( $employees as $e ) : ?>
+							<option value="<?php echo esc_attr( $e->id ); ?>" <?php selected( $filter_emp, (int) $e->id ); ?>><?php echo esc_html( $e->name ); ?></option>
+						<?php endforeach; ?>
+					</select>
+				</label>
+				<button type="submit" class="gvsr-btn-ghost">اعمال</button>
+				<a class="gvsr-btn-ghost" href="<?php echo esc_url( admin_url( 'admin.php?page=' . GV_SR_PAGE_SLUG . '&tab=team' ) ); ?>">بازه ماه جاری</a>
+			</form>
+			<p class="gvsr-hint">پیش‌فرض، بازه از اول تا آخر ماه شمسی جاری است. این بازه روی بخش‌های «حقوق»، «خلاصه سئو» و «ریز کارکرد» زیر اعمال می‌شود.</p>
+		</div>
+	</details>
 
 	<?php
 	$grand_hours = 0.0;
@@ -3174,102 +3312,111 @@ function gv_sr_render_team_tab() {
 	$reports_range = gv_sr_get_reports( array( 'date_from' => $from, 'date_to' => $to, 'limit' => 0 ) );
 	$content_total = $task_counts['content_new'] + $task_counts['content_update'];
 	?>
-	<div class="gvsr-kpi-grid">
-		<div class="gvsr-kpi"><b><?php echo esc_html( gv_sr_fa_digits( $grand_hours ) ); ?></b><span>جمع ساعت کارکرد تیم در این بازه</span></div>
-		<?php if ( $is_super ) : ?>
-		<div class="gvsr-kpi"><b><?php echo esc_html( gv_sr_fa_digits( number_format_i18n( $grand_pay ) ) ); ?></b><span>مجموع حقوق قابل‌پرداخت (تومان)</span></div>
-		<?php endif; ?>
-		<div class="gvsr-kpi"><b><?php echo esc_html( number_format_i18n( count( $reports_range ) ) ); ?></b><span>گزارش سئوی مشتریان در این بازه</span></div>
-		<div class="gvsr-kpi"><b><?php echo esc_html( number_format_i18n( $content_total ) ); ?></b><span>محتوای تولید/بروزرسانی‌شده</span></div>
-		<div class="gvsr-kpi"><b><?php echo esc_html( number_format_i18n( $kw_summary['up'] ) ); ?></b><span>کلمه کلیدی بهبودیافته</span></div>
-	</div>
-
-	<div class="gvsr-report-card">
-		<h3><?php echo $is_super ? '💰 جدول حقوق و ساعت کارکرد به تفکیک کارمند' : '🕒 جدول ساعت کارکرد به تفکیک کارمند'; ?></h3>
-		<?php if ( empty( $per_emp ) ) : ?>
-			<div class="gvsr-chart-empty">کارمندی برای نمایش وجود ندارد.</div>
-		<?php else : ?>
-			<div class="gvsr-table-wrap" style="max-width:100%;">
-				<table class="gvsr-table">
-					<thead><tr><th>کارمند</th><?php if ( $is_super ) : ?><th>نرخ ساعتی</th><?php endif; ?><th>جمع ساعت این بازه</th><?php if ( $is_super ) : ?><th>مبلغ قابل‌پرداخت</th><?php endif; ?><th>عملیات</th></tr></thead>
-					<tbody>
-					<?php foreach ( $per_emp as $row ) :
-						$e = $row['emp'];
-						$exp_url = wp_nonce_url( admin_url( 'admin-post.php?action=gv_sr_export_team_timesheet&employee_id=' . $e->id . '&from=' . rawurlencode( $from ) . '&to=' . rawurlencode( $to ) ), GV_SR_NONCE );
-						?>
-						<tr>
-							<td><b><?php echo esc_html( $e->name ); ?></b></td>
-							<?php if ( $is_super ) : ?>
-							<td><?php echo $e->hourly_rate > 0 ? esc_html( gv_sr_fa_digits( number_format_i18n( $e->hourly_rate ) ) ) : '—'; ?></td>
-							<?php endif; ?>
-							<td><?php echo esc_html( gv_sr_fa_digits( $row['hours'] ) ); ?></td>
-							<?php if ( $is_super ) : ?>
-							<td><b style="color:#059669;"><?php echo $row['pay'] > 0 ? esc_html( gv_sr_fa_digits( number_format_i18n( $row['pay'] ) ) ) : '—'; ?></b></td>
-							<?php endif; ?>
-							<td><a href="<?php echo esc_url( $exp_url ); ?>" class="gvsr-btn-ghost" style="font-size:11px;">📥 اکسل</a></td>
-						</tr>
-					<?php endforeach; ?>
-					<tr>
-						<td><b>جمع کل</b></td>
-						<?php if ( $is_super ) : ?><td>—</td><?php endif; ?>
-						<td><b><?php echo esc_html( gv_sr_fa_digits( $grand_hours ) ); ?></b></td>
-						<?php if ( $is_super ) : ?><td><b><?php echo esc_html( gv_sr_fa_digits( number_format_i18n( $grand_pay ) ) ); ?></b></td><?php endif; ?>
-						<td>
-							<?php $exp_all = wp_nonce_url( admin_url( 'admin-post.php?action=gv_sr_export_team_timesheet&employee_id=0&from=' . rawurlencode( $from ) . '&to=' . rawurlencode( $to ) ), GV_SR_NONCE ); ?>
-							<a href="<?php echo esc_url( $exp_all ); ?>" class="gvsr-btn-ghost" style="font-size:11px;">📥 اکسل همه</a>
-						</td>
-					</tr>
-					</tbody>
-				</table>
-			</div>
-		<?php endif; ?>
-	</div>
-
-	<div class="gvsr-report-card">
-		<h3>📈 خلاصه جامع سئو در این بازه (کل مشتریان)</h3>
-		<div class="gvsr-period-grid" style="grid-template-columns:repeat(5,1fr);">
-			<div class="gvsr-period-item"><b><?php echo esc_html( number_format_i18n( $task_counts['content_new'] ) ); ?></b><span>محتوای جدید</span></div>
-			<div class="gvsr-period-item"><b><?php echo esc_html( number_format_i18n( $task_counts['content_update'] ) ); ?></b><span>بروزرسانی محتوا</span></div>
-			<div class="gvsr-period-item"><b><?php echo esc_html( number_format_i18n( $kw_summary['up'] ) ); ?></b><span>رتبه بهبودیافته</span></div>
-			<div class="gvsr-period-item"><b><?php echo esc_html( number_format_i18n( $kw_summary['down'] ) ); ?></b><span>رتبه افت‌کرده</span></div>
-			<div class="gvsr-period-item"><b><?php echo esc_html( number_format_i18n( $kw_summary['new'] ) ); ?></b><span>کلمه تازه‌وارد</span></div>
-		</div>
-	</div>
-
-	<div class="gvsr-report-card">
-		<h3>🗒️ ریز کارکرد روزانه هر کارمند در این بازه</h3>
-		<?php foreach ( $per_emp as $row ) :
-			$e    = $row['emp'];
-			$logs = gv_sr_get_timelogs( array( 'employee_id' => $e->id, 'date_from' => $from, 'date_to' => $to ) );
-			?>
-			<details class="gvsr-emp-accordion">
-				<summary><?php echo esc_html( $e->name ); ?> — <?php echo esc_html( gv_sr_fa_digits( $row['hours'] ) ); ?> ساعت / <?php echo esc_html( number_format_i18n( count( $logs ) ) ); ?> ردیف کارکرد</summary>
-				<?php if ( empty( $logs ) ) : ?>
-					<div class="gvsr-chart-empty">کارکردی در این بازه ثبت نشده.</div>
-				<?php else : ?>
-					<div class="gvsr-table-wrap" style="max-width:100%;">
-						<table class="gvsr-table">
-							<thead><tr><th>تاریخ</th><th>روز</th><th>نوع فعالیت</th><th>ساعت</th><th>مشتری/پروژه</th><th>خلاصه فعالیت</th></tr></thead>
-							<tbody>
-							<?php foreach ( $logs as $l ) : $act = gv_sr_task_types()[ $l->activity_type ] ?? array( 'label' => $l->activity_type, 'icon' => '•' ); ?>
-								<tr>
-									<td><?php echo esc_html( gv_sr_jalali_numeric( $l->work_date ) ); ?></td>
-									<td><?php echo esc_html( gv_sr_weekday_name( $l->work_date ) ); ?></td>
-									<td><?php echo esc_html( $act['icon'] . ' ' . $act['label'] ); ?></td>
-									<td><b><?php echo esc_html( gv_sr_fa_digits( $l->hours ) ); ?></b></td>
-									<td><?php echo esc_html( $l->client_name ?: '—' ); ?></td>
-									<td><?php echo esc_html( $l->note ?: '—' ); ?></td>
-								</tr>
-							<?php endforeach; ?>
-							</tbody>
-						</table>
-					</div>
+	<details class="gvsr-section-toggle" id="gvsr-sec-salary">
+		<summary><?php echo $is_super ? '💰 جدول حقوق و ساعت کارکرد به تفکیک کارمند' : '🕒 جدول ساعت کارکرد به تفکیک کارمند'; ?></summary>
+		<div class="gvsr-section-toggle-body">
+			<div class="gvsr-kpi-grid">
+				<div class="gvsr-kpi"><b><?php echo esc_html( gv_sr_fa_digits( $grand_hours ) ); ?></b><span>جمع ساعت کارکرد تیم در این بازه</span></div>
+				<?php if ( $is_super ) : ?>
+				<div class="gvsr-kpi"><b><?php echo esc_html( gv_sr_fa_digits( number_format_i18n( $grand_pay ) ) ); ?></b><span>مجموع حقوق قابل‌پرداخت (تومان)</span></div>
 				<?php endif; ?>
-			</details>
-		<?php endforeach; ?>
-	</div>
+				<div class="gvsr-kpi"><b><?php echo esc_html( number_format_i18n( count( $reports_range ) ) ); ?></b><span>گزارش سئوی مشتریان در این بازه</span></div>
+				<div class="gvsr-kpi"><b><?php echo esc_html( number_format_i18n( $content_total ) ); ?></b><span>محتوای تولید/بروزرسانی‌شده</span></div>
+				<div class="gvsr-kpi"><b><?php echo esc_html( number_format_i18n( $kw_summary['up'] ) ); ?></b><span>کلمه کلیدی بهبودیافته</span></div>
+			</div>
 
-	<details class="gvsr-section-toggle">
+			<?php if ( empty( $per_emp ) ) : ?>
+				<div class="gvsr-chart-empty">کارمندی برای نمایش وجود ندارد.</div>
+			<?php else : ?>
+				<div class="gvsr-table-wrap" style="max-width:100%;">
+					<table class="gvsr-table">
+						<thead><tr><th>کارمند</th><?php if ( $is_super ) : ?><th>نرخ ساعتی</th><?php endif; ?><th>جمع ساعت این بازه</th><?php if ( $is_super ) : ?><th>مبلغ قابل‌پرداخت</th><?php endif; ?><th>عملیات</th></tr></thead>
+						<tbody>
+						<?php foreach ( $per_emp as $row ) :
+							$e = $row['emp'];
+							$exp_url = wp_nonce_url( admin_url( 'admin-post.php?action=gv_sr_export_team_timesheet&employee_id=' . $e->id . '&from=' . rawurlencode( $from ) . '&to=' . rawurlencode( $to ) ), GV_SR_NONCE );
+							?>
+							<tr>
+								<td><b><?php echo esc_html( $e->name ); ?></b></td>
+								<?php if ( $is_super ) : ?>
+								<td><?php echo $e->hourly_rate > 0 ? esc_html( gv_sr_fa_digits( number_format_i18n( $e->hourly_rate ) ) ) : '—'; ?></td>
+								<?php endif; ?>
+								<td><?php echo esc_html( gv_sr_fa_digits( $row['hours'] ) ); ?></td>
+								<?php if ( $is_super ) : ?>
+								<td><b style="color:#059669;"><?php echo $row['pay'] > 0 ? esc_html( gv_sr_fa_digits( number_format_i18n( $row['pay'] ) ) ) : '—'; ?></b></td>
+								<?php endif; ?>
+								<td><a href="<?php echo esc_url( $exp_url ); ?>" class="gvsr-btn-ghost" style="font-size:11px;">📥 اکسل</a></td>
+							</tr>
+						<?php endforeach; ?>
+						<tr>
+							<td><b>جمع کل</b></td>
+							<?php if ( $is_super ) : ?><td>—</td><?php endif; ?>
+							<td><b><?php echo esc_html( gv_sr_fa_digits( $grand_hours ) ); ?></b></td>
+							<?php if ( $is_super ) : ?><td><b><?php echo esc_html( gv_sr_fa_digits( number_format_i18n( $grand_pay ) ) ); ?></b></td><?php endif; ?>
+							<td>
+								<?php $exp_all = wp_nonce_url( admin_url( 'admin-post.php?action=gv_sr_export_team_timesheet&employee_id=0&from=' . rawurlencode( $from ) . '&to=' . rawurlencode( $to ) ), GV_SR_NONCE ); ?>
+								<a href="<?php echo esc_url( $exp_all ); ?>" class="gvsr-btn-ghost" style="font-size:11px;">📥 اکسل همه</a>
+							</td>
+						</tr>
+						</tbody>
+					</table>
+				</div>
+			<?php endif; ?>
+		</div>
+	</details>
+
+	<details class="gvsr-section-toggle" id="gvsr-sec-seo">
+		<summary>📈 خلاصه جامع سئو در این بازه (کل مشتریان)</summary>
+		<div class="gvsr-section-toggle-body">
+			<div class="gvsr-period-grid" style="grid-template-columns:repeat(5,1fr);">
+				<div class="gvsr-period-item"><b><?php echo esc_html( number_format_i18n( $task_counts['content_new'] ) ); ?></b><span>محتوای جدید</span></div>
+				<div class="gvsr-period-item"><b><?php echo esc_html( number_format_i18n( $task_counts['content_update'] ) ); ?></b><span>بروزرسانی محتوا</span></div>
+				<div class="gvsr-period-item"><b><?php echo esc_html( number_format_i18n( $kw_summary['up'] ) ); ?></b><span>رتبه بهبودیافته</span></div>
+				<div class="gvsr-period-item"><b><?php echo esc_html( number_format_i18n( $kw_summary['down'] ) ); ?></b><span>رتبه افت‌کرده</span></div>
+				<div class="gvsr-period-item"><b><?php echo esc_html( number_format_i18n( $kw_summary['new'] ) ); ?></b><span>کلمه تازه‌وارد</span></div>
+			</div>
+		</div>
+	</details>
+
+	<details class="gvsr-section-toggle" id="gvsr-sec-daily">
+		<summary>🗒️ ریز کارکرد روزانه هر کارمند در این بازه</summary>
+		<div class="gvsr-section-toggle-body">
+			<?php foreach ( $per_emp as $row ) :
+				$e    = $row['emp'];
+				$logs = gv_sr_get_timelogs( array( 'employee_id' => $e->id, 'date_from' => $from, 'date_to' => $to ) );
+				?>
+				<details class="gvsr-emp-accordion">
+					<summary><?php echo esc_html( $e->name ); ?> — <?php echo esc_html( gv_sr_fa_digits( $row['hours'] ) ); ?> ساعت / <?php echo esc_html( number_format_i18n( count( $logs ) ) ); ?> ردیف کارکرد</summary>
+					<?php if ( empty( $logs ) ) : ?>
+						<div class="gvsr-chart-empty">کارکردی در این بازه ثبت نشده.</div>
+					<?php else : ?>
+						<div class="gvsr-table-wrap" style="max-width:100%;">
+							<table class="gvsr-table">
+								<thead><tr><th>تاریخ</th><th>روز</th><th>نوع فعالیت</th><th>ساعت</th><th>مشتری/پروژه</th><th>خلاصه فعالیت</th><th>عملیات</th></tr></thead>
+								<tbody>
+								<?php foreach ( $logs as $l ) : $act = gv_sr_task_types()[ $l->activity_type ] ?? array( 'label' => $l->activity_type, 'icon' => '•' ); ?>
+									<tr>
+										<td><?php echo esc_html( gv_sr_jalali_numeric( $l->work_date ) ); ?></td>
+										<td><?php echo esc_html( gv_sr_weekday_name( $l->work_date ) ); ?></td>
+										<td><?php echo esc_html( $act['icon'] . ' ' . $act['label'] ); ?></td>
+										<td><b><?php echo esc_html( gv_sr_fa_digits( $l->hours ) ); ?></b></td>
+										<td><?php echo esc_html( $l->client_name ?: '—' ); ?></td>
+										<td><?php echo esc_html( $l->note ?: '—' ); ?></td>
+										<td class="gvsr-row-actions">
+											<a class="gvsr-danger" onclick="return confirm('این ردیف کارکرد برای همیشه حذف شود؟ فعالیت مرتبط در گزارش سئوی مشتری هم حذف می‌شود.');" href="<?php echo esc_url( wp_nonce_url( admin_url( 'admin-post.php?action=gv_sr_delete_timelog&id=' . $l->id ), GV_SR_NONCE ) ); ?>">حذف</a>
+										</td>
+									</tr>
+								<?php endforeach; ?>
+								</tbody>
+							</table>
+						</div>
+					<?php endif; ?>
+				</details>
+			<?php endforeach; ?>
+		</div>
+	</details>
+
+	<details class="gvsr-section-toggle" id="gvsr-sec-password">
 		<summary>🔑 تغییر رمز عبور من</summary>
 		<div class="gvsr-section-toggle-body">
 			<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" class="gvsr-grid-2">
@@ -3285,6 +3432,62 @@ function gv_sr_render_team_tab() {
 
 	<?php if ( $is_super ) : gv_sr_render_admin_accounts_section(); endif; ?>
 
+	<script>
+	document.addEventListener('DOMContentLoaded', function () {
+		/* ---- ناوبری کارتی بخش مدیریت تیم: کلیک -> باز کردن جزئیات + اسکرول ---- */
+		document.querySelectorAll('#gvsr-team-nav .gvsr-nav-card').forEach(function (card) {
+			card.addEventListener('click', function () {
+				var target = document.getElementById(card.getAttribute('data-target'));
+				if (!target) { return; }
+				if (typeof target.open !== 'undefined') { target.open = true; }
+				setTimeout(function () {
+					target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+				}, 30);
+			});
+		});
+
+		/* ---- مودال حذف کارمند ---- */
+		var empDeleteModal  = document.getElementById('gvsr-emp-delete-modal');
+		var empDeleteName   = document.getElementById('gvsr-emp-delete-name');
+		var empDeleteId     = document.getElementById('gvsr-emp-delete-id');
+		var empDeleteTarget = document.getElementById('gvsr-emp-delete-target');
+		var empDeleteCancel = document.getElementById('gvsr-emp-delete-cancel');
+		var allEmployees    = <?php echo wp_json_encode( array_map( function ( $e ) { return array( 'id' => (int) $e->id, 'name' => $e->name ); }, $employees ) ); ?>;
+
+		document.querySelectorAll('.gvsr-emp-delete-trigger').forEach(function (link) {
+			link.addEventListener('click', function (e) {
+				e.preventDefault();
+				var empId = link.getAttribute('data-emp-id');
+				var empName = link.getAttribute('data-emp-name');
+				if (empDeleteName) { empDeleteName.textContent = empName; }
+				if (empDeleteId) { empDeleteId.value = empId; }
+				if (empDeleteTarget) {
+					empDeleteTarget.innerHTML = '';
+					allEmployees.forEach(function (emp) {
+						if (String(emp.id) === String(empId)) { return; }
+						var opt = document.createElement('option');
+						opt.value = emp.id;
+						opt.textContent = emp.name;
+						empDeleteTarget.appendChild(opt);
+					});
+					if (!empDeleteTarget.options.length) {
+						var opt = document.createElement('option');
+						opt.value = '0';
+						opt.textContent = '— کارمند دیگری برای انتقال وجود ندارد —';
+						empDeleteTarget.appendChild(opt);
+					}
+				}
+				if (empDeleteModal) { empDeleteModal.style.display = 'flex'; }
+			});
+		});
+		if (empDeleteCancel) {
+			empDeleteCancel.addEventListener('click', function () {
+				if (empDeleteModal) { empDeleteModal.style.display = 'none'; }
+			});
+		}
+	});
+	</script>
+
 	<?php
 	do_action( 'gv_sr_team_tab_extra', $from, $to );
 }
@@ -3299,7 +3502,7 @@ function gv_sr_render_admin_accounts_section() {
 	if ( isset( $_GET['saved_admin_acc'] ) ) { echo '<div class="gvsr-notice">حساب مدیریتی ذخیره شد.</div>'; }
 	if ( isset( $_GET['admin_err'] ) ) { echo '<div class="gvsr-notice" style="background:#fee2e2;color:#b91c1c;border-color:#fca5a5;">نام کاربری الزامی است.</div>'; }
 	?>
-	<details class="gvsr-section-toggle">
+	<details class="gvsr-section-toggle" id="gvsr-sec-admins" <?php echo $editing ? 'open' : ''; ?>>
 		<summary>👑 حساب‌های مدیریتی (سطح دسترسی) <span class="gvsr-toggle-count">(<?php echo esc_html( number_format_i18n( count( $admins ) ) ); ?> حساب)</span></summary>
 		<div class="gvsr-section-toggle-body">
 			<p class="gvsr-hint">«مدیر تیم سئو» فعالیت و کارکرد همه کارمندان را می‌بیند اما به نرخ ساعتی/حقوق/سود پروژه دسترسی ندارد. «مدیر اصلی» دسترسی ۱۰۰٪ دارد.</p>
@@ -3356,287 +3559,12 @@ function gv_sr_render_admin_accounts_section() {
 }
 
 /* ==========================================================================
-   ۹) فرم افزودن / ویرایش گزارش (ساده‌شده: پروژه به‌جای تایپ دستی مشتری)
-   ========================================================================== */
-function gv_sr_render_admin_form( $report ) {
-	$is_edit    = ! empty( $report );
-	$report_id  = $is_edit ? (int) $report->id : 0;
-	$keywords   = $is_edit ? gv_sr_get_keywords( $report_id ) : array();
-	$tasks      = $is_edit ? gv_sr_get_tasks( $report_id, 'work_date', 'ASC' ) : array();
-	$growth     = $is_edit ? gv_sr_get_growth( $report_id ) : array();
-	$visibility = $is_edit ? gv_sr_get_visibility( $report ) : gv_sr_default_visibility();
-	$task_types = gv_sr_task_types();
-	$projects   = gv_sr_get_projects();
-	?>
-	<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" class="gvsr-form">
-		<?php wp_nonce_field( GV_SR_NONCE ); ?>
-		<input type="hidden" name="action" value="gv_sr_save_report">
-		<input type="hidden" name="report_id" value="<?php echo esc_attr( $report_id ); ?>">
-
-		<div class="gvsr-box">
-			<h2>👤 اطلاعات مشتری و گزارش</h2>
-			<div class="gvsr-grid-2">
-				<label>پروژه مرتبط (اختیاری، برای اتصال دقیق‌تر)
-					<select name="project_id" class="gvsr-select">
-						<option value="0">— بدون پروژه —</option>
-						<?php foreach ( $projects as $p ) : ?>
-							<option value="<?php echo esc_attr( $p->id ); ?>" <?php selected( $is_edit ? (int) $report->project_id : 0, (int) $p->id ); ?>><?php echo esc_html( $p->title . ' — ' . $p->client_name ); ?></option>
-						<?php endforeach; ?>
-					</select>
-				</label>
-				<label>نام مشتری / کسب‌وکار
-					<input type="text" name="client_name" required value="<?php echo esc_attr( $is_edit ? $report->client_name : '' ); ?>" placeholder="مثلاً: فروشگاه اینترنتی نمونه">
-				</label>
-			</div>
-			<div class="gvsr-grid-2">
-				<label>اتصال به کاربر سایت (برای ورود مشتری به پنل)
-					<?php
-					wp_dropdown_users( array(
-						'name'             => 'user_id',
-						'show_option_none' => '— بدون اتصال به کاربر سایت —',
-						'option_none_value'=> 0,
-						'selected'         => $is_edit ? (int) $report->user_id : 0,
-						'class'            => 'gvsr-select',
-					) );
-					?>
-				</label>
-				<label>عنوان گزارش
-					<input type="text" name="title" required value="<?php echo esc_attr( $is_edit ? $report->title : 'گزارش هفتگی سئو' ); ?>">
-				</label>
-			</div>
-			<div class="gvsr-grid-2">
-				<label>وضعیت انتشار
-					<select name="status" class="gvsr-select">
-						<option value="draft" <?php selected( $is_edit ? $report->status : 'draft', 'draft' ); ?>>پیش‌نویس (فقط داخلی، مشتری نمی‌بیند)</option>
-						<option value="published" <?php selected( $is_edit ? $report->status : '', 'published' ); ?>>منتشرشده (برای مشتری قابل مشاهده است)</option>
-					</select>
-				</label>
-				<label>امتیاز کلی سئو (۰ تا ۱۰۰)
-					<input type="number" min="0" max="100" name="overall_score" value="<?php echo esc_attr( $is_edit ? $report->overall_score : 70 ); ?>">
-				</label>
-			</div>
-			<div class="gvsr-grid-2">
-				<label>شروع بازه گزارش (شمسی)
-					<?php echo gv_sr_jalali_select_fields( 'period_start', $is_edit ? $report->period_start : '' ); ?>
-				</label>
-				<label>پایان بازه گزارش (شمسی)
-					<?php echo gv_sr_jalali_select_fields( 'period_end', $is_edit ? $report->period_end : '' ); ?>
-				</label>
-			</div>
-			<label>خلاصه عملکرد (توضیح کارمند برای مشتری)
-				<textarea name="summary" rows="4" placeholder="در این بازه چه اقداماتی انجام شد و نتیجه کلی چه بود؟"><?php echo esc_textarea( $is_edit ? $report->summary : '' ); ?></textarea>
-			</label>
-			<label>برنامه گام بعدی
-				<textarea name="next_steps" rows="3" placeholder="برنامه و اولویت‌های بازه بعدی چیست؟"><?php echo esc_textarea( $is_edit ? $report->next_steps : '' ); ?></textarea>
-			</label>
-			<div class="gvsr-grid-4">
-				<label>ساعت کار صرف‌شده (خودکار محاسبه می‌شود)
-					<input type="number" step="0.5" min="0" name="hours_spent" value="<?php echo esc_attr( $is_edit ? $report->hours_spent : '' ); ?>" readonly style="background:#f8fafc;">
-				</label>
-				<label>ترافیک ارگانیک — قبل
-					<input type="number" min="0" name="traffic_before" value="<?php echo esc_attr( $is_edit ? $report->traffic_before : '' ); ?>">
-				</label>
-				<label>ترافیک ارگانیک — بعد
-					<input type="number" min="0" name="traffic_after" value="<?php echo esc_attr( $is_edit ? $report->traffic_after : '' ); ?>">
-				</label>
-				<label>&nbsp;</label>
-			</div>
-		</div>
-
-		<div class="gvsr-box">
-			<h2>🔑 کلمات کلیدی و تغییر رتبه</h2>
-			<p class="gvsr-hint">رتبه ۰ یعنی «خارج از ۱۰۰ / رتبه‌بندی نشده». برای کلمه‌ای که تازه وارد نتایج شده، «رتبه قبلی» را ۰ بگذارید.</p>
-			<table class="gvsr-repeater" id="gvsr-repeater-kw">
-				<thead><tr>
-					<th style="width:20%;">کلمه کلیدی</th>
-					<th style="width:12%;">موتور جستجو</th>
-					<th style="width:20%;">لینک صفحه</th>
-					<th style="width:10%;">رتبه قبلی</th>
-					<th style="width:10%;">رتبه فعلی</th>
-					<th>توضیح</th>
-					<th style="width:34px;"></th>
-				</tr></thead>
-				<tbody>
-					<?php if ( $keywords ) : foreach ( $keywords as $k ) : ?>
-					<tr>
-						<td><input type="text" name="kw_keyword[]" value="<?php echo esc_attr( $k->keyword ); ?>"></td>
-						<td><input type="text" name="kw_engine[]" value="<?php echo esc_attr( $k->search_engine ); ?>"></td>
-						<td><input type="url" name="kw_url[]" value="<?php echo esc_attr( $k->page_url ); ?>"></td>
-						<td><input type="number" min="0" name="kw_prev[]" value="<?php echo esc_attr( $k->prev_rank ); ?>"></td>
-						<td><input type="number" min="0" name="kw_curr[]" value="<?php echo esc_attr( $k->curr_rank ); ?>"></td>
-						<td><input type="text" name="kw_note[]" value="<?php echo esc_attr( $k->note ); ?>"></td>
-						<td><button type="button" class="gvsr-row-del">✕</button></td>
-					</tr>
-					<?php endforeach; else : ?>
-					<tr>
-						<td><input type="text" name="kw_keyword[]"></td>
-						<td><input type="text" name="kw_engine[]" value="گوگل"></td>
-						<td><input type="url" name="kw_url[]"></td>
-						<td><input type="number" min="0" name="kw_prev[]"></td>
-						<td><input type="number" min="0" name="kw_curr[]"></td>
-						<td><input type="text" name="kw_note[]"></td>
-						<td><button type="button" class="gvsr-row-del">✕</button></td>
-					</tr>
-					<?php endif; ?>
-				</tbody>
-			</table>
-			<button type="button" class="gvsr-btn-add" data-target="gvsr-repeater-kw">➕ افزودن کلمه کلیدی</button>
-		</div>
-
-		<div class="gvsr-box">
-			<h2>🗂️ ریز فعالیت‌ها و محتوای تولید/بروزرسانی‌شده</h2>
-			<p class="gvsr-hint">✅ ردیف‌هایی که کارمند از تب «کارکرد من» ثبت کرده، خودکار همین‌جا نمایش داده می‌شوند. اینجا فقط برای افزودن ردیف‌های دستیِ اضافه استفاده کنید.</p>
-			<table class="gvsr-repeater" id="gvsr-repeater-task">
-				<thead><tr>
-					<th style="width:14%;">نوع فعالیت</th>
-					<th style="width:20%;">عنوان</th>
-					<th style="width:16%;">لینک</th>
-					<th style="width:12%;">کلمه هدف</th>
-					<th style="width:16%;">تاریخ انجام</th>
-					<th style="width:8%;">ساعت</th>
-					<th>توضیح</th>
-					<th style="width:34px;"></th>
-				</tr></thead>
-				<tbody>
-					<?php if ( $tasks ) : foreach ( $tasks as $t ) : ?>
-					<tr>
-						<td>
-							<select name="task_type[]" class="gvsr-select" <?php echo $t->source_timelog_id ? 'disabled' : ''; ?>>
-								<?php foreach ( $task_types as $key => $info ) : ?>
-									<option value="<?php echo esc_attr( $key ); ?>" <?php selected( $t->task_type, $key ); ?>><?php echo esc_html( $info['icon'] . ' ' . $info['label'] ); ?></option>
-								<?php endforeach; ?>
-							</select>
-						</td>
-						<td><input type="text" name="task_title[]" value="<?php echo esc_attr( $t->title ); ?>" <?php echo $t->source_timelog_id ? 'readonly' : ''; ?>>
-							<?php if ( $t->source_timelog_id ) : ?><span class="gvsr-hidden-flag" style="background:#e6f6f4;color:#0f766e;">از کارکرد من</span><?php endif; ?>
-						</td>
-						<td><input type="url" name="task_url[]" value="<?php echo esc_attr( $t->url ); ?>"></td>
-						<td><input type="text" name="task_keyword[]" value="<?php echo esc_attr( $t->target_keyword ); ?>"></td>
-						<td><?php echo gv_sr_jalali_select_fields( 'task_date[]', $t->work_date ); ?></td>
-						<td><input type="number" step="0.5" min="0" name="task_hours[]" value="<?php echo esc_attr( $t->hours ); ?>" <?php echo $t->source_timelog_id ? 'readonly' : ''; ?>></td>
-						<td><input type="text" name="task_note[]" value="<?php echo esc_attr( $t->note ); ?>"></td>
-						<td><?php if ( ! $t->source_timelog_id ) : ?><button type="button" class="gvsr-row-del">✕</button><?php endif; ?></td>
-					</tr>
-					<?php endforeach; endif; ?>
-					<tr>
-						<td>
-							<select name="task_type[]" class="gvsr-select">
-								<?php foreach ( $task_types as $key => $info ) : ?>
-									<option value="<?php echo esc_attr( $key ); ?>"><?php echo esc_html( $info['icon'] . ' ' . $info['label'] ); ?></option>
-								<?php endforeach; ?>
-							</select>
-						</td>
-						<td><input type="text" name="task_title[]"></td>
-						<td><input type="url" name="task_url[]"></td>
-						<td><input type="text" name="task_keyword[]"></td>
-						<td><?php echo gv_sr_jalali_select_fields( 'task_date[]', '' ); ?></td>
-						<td><input type="number" step="0.5" min="0" name="task_hours[]"></td>
-						<td><input type="text" name="task_note[]"></td>
-						<td><button type="button" class="gvsr-row-del">✕</button></td>
-					</tr>
-				</tbody>
-			</table>
-			<button type="button" class="gvsr-btn-add" data-target="gvsr-repeater-task">➕ افزودن فعالیت دستی</button>
-		</div>
-
-		<div class="gvsr-box">
-			<h2>📈 رشد صفحات</h2>
-			<table class="gvsr-repeater" id="gvsr-repeater-growth">
-				<thead><tr>
-					<th style="width:18%;">عنوان صفحه</th>
-					<th style="width:20%;">لینک</th>
-					<th style="width:16%;">شاخص اندازه‌گیری</th>
-					<th style="width:12%;">مقدار قبل</th>
-					<th style="width:12%;">مقدار بعد</th>
-					<th>توضیح</th>
-					<th style="width:34px;"></th>
-				</tr></thead>
-				<tbody>
-					<?php if ( $growth ) : foreach ( $growth as $g ) : ?>
-					<tr>
-						<td><input type="text" name="growth_title[]" value="<?php echo esc_attr( $g->page_title ); ?>"></td>
-						<td><input type="url" name="growth_url[]" value="<?php echo esc_attr( $g->page_url ); ?>"></td>
-						<td><input type="text" name="growth_metric[]" value="<?php echo esc_attr( $g->metric_label ); ?>"></td>
-						<td><input type="text" name="growth_before[]" value="<?php echo esc_attr( $g->before_value ); ?>"></td>
-						<td><input type="text" name="growth_after[]" value="<?php echo esc_attr( $g->after_value ); ?>"></td>
-						<td><input type="text" name="growth_note[]" value="<?php echo esc_attr( $g->note ); ?>"></td>
-						<td><button type="button" class="gvsr-row-del">✕</button></td>
-					</tr>
-					<?php endforeach; else : ?>
-					<tr>
-						<td><input type="text" name="growth_title[]"></td>
-						<td><input type="url" name="growth_url[]"></td>
-						<td><input type="text" name="growth_metric[]" placeholder="مثلاً: بازدید ماهانه صفحه"></td>
-						<td><input type="text" name="growth_before[]"></td>
-						<td><input type="text" name="growth_after[]"></td>
-						<td><input type="text" name="growth_note[]"></td>
-						<td><button type="button" class="gvsr-row-del">✕</button></td>
-					</tr>
-					<?php endif; ?>
-				</tbody>
-			</table>
-			<button type="button" class="gvsr-btn-add" data-target="gvsr-repeater-growth">➕ افزودن ردیف رشد</button>
-		</div>
-
-		<div class="gvsr-box">
-			<h2>👁️ کنترل نمایش برای مشتری</h2>
-			<p class="gvsr-hint">هر بخش را می‌توانید جدا برای مشتری فعال یا غیرفعال کنید. علاوه بر این، تا وقتی وضعیت گزارش «پیش‌نویس» باشد، کل گزارش برای مشتری نامرئی است.</p>
-			<div class="gvsr-vis-grid">
-				<?php foreach ( gv_sr_visibility_keys() as $key => $label ) : ?>
-					<label class="gvsr-vis-item">
-						<input type="checkbox" name="<?php echo esc_attr( $key ); ?>" <?php checked( ! empty( $visibility[ $key ] ) ); ?>>
-						<?php echo esc_html( $label ); ?>
-					</label>
-				<?php endforeach; ?>
-			</div>
-		</div>
-
-		<div class="gvsr-form-actions">
-			<button type="submit" class="gvsr-btn-export">💾 ذخیره گزارش</button>
-			<a class="gvsr-btn-ghost" href="<?php echo esc_url( admin_url( 'admin.php?page=' . GV_SR_PAGE_SLUG ) ); ?>">انصراف</a>
-		</div>
-	</form>
-
-	<script>
-	document.addEventListener('DOMContentLoaded', function () {
-		document.querySelectorAll('.gvsr-btn-add').forEach(function (btn) {
-			btn.addEventListener('click', function () {
-				var table = document.getElementById(btn.getAttribute('data-target'));
-				var tbody = table.querySelector('tbody');
-				var lastRow = tbody.querySelector('tr:last-child');
-				var newRow = lastRow.cloneNode(true);
-				newRow.querySelectorAll('input[type="text"], input[type="url"], input[type="number"]').forEach(function (el) { el.value = ''; el.removeAttribute('readonly'); });
-				newRow.querySelectorAll('select.gvsr-select').forEach(function (el) { el.selectedIndex = 0; el.removeAttribute('disabled'); });
-				var flag = newRow.querySelector('.gvsr-hidden-flag'); if (flag) { flag.remove(); }
-				var delBtn = newRow.querySelector('.gvsr-row-del'); if (!delBtn) {
-					var td = newRow.querySelector('td:last-child');
-					var b = document.createElement('button'); b.type='button'; b.className='gvsr-row-del'; b.textContent='✕';
-					td.appendChild(b);
-				}
-				tbody.appendChild(newRow);
-			});
-		});
-		document.addEventListener('click', function (e) {
-			if (e.target && e.target.classList.contains('gvsr-row-del')) {
-				var tbody = e.target.closest('tbody');
-				if (tbody.querySelectorAll('tr').length > 1) {
-					e.target.closest('tr').remove();
-				} else {
-					e.target.closest('tr').querySelectorAll('input[type="text"], input[type="url"], input[type="number"]').forEach(function (el) { el.value = ''; });
-				}
-			}
-		});
-	});
-	</script>
-	<?php
-}
-
-/* ==========================================================================
    ۱۰) استایل مشترک صفحات مدیریت + اسکریپت مرتب‌سازی جدول
    ========================================================================== */
 function gv_sr_admin_styles() {
 	?>
 	<style>
+		<?php gv_sr_restyle_css(); ?>
 		:root{
 			--gv-ink:#0f172a; --gv-ink-soft:#475569; --gv-muted:#94a3b8;
 			--gv-bg:#f4f6f8; --gv-surface:#ffffff; --gv-border:#e6e9ee;
@@ -3716,9 +3644,33 @@ function gv_sr_admin_styles() {
 		.gvsr-repeater th{background:#f8fafc;font-size:10.8px;color:var(--gv-ink-soft);padding:7px 8px;text-align:right;font-weight:800;}
 		.gvsr-repeater td{padding:5px 6px;border-top:1px solid #f1f5f9;vertical-align:middle;}
 		.gvsr-repeater input,.gvsr-repeater select{width:100%;box-sizing:border-box;padding:7px 8px;border:1px solid var(--gv-border);border-radius:7px;font-family:inherit;font-size:11.5px;}
-		.gvsr-jdate-group{display:flex;gap:3px;}
-		.gvsr-jdate-group select{min-width:0;}
-		.gvsr-jdate-compact select{padding:6px 4px;font-size:11px;border-radius:6px;}
+
+		/* ---------- تاریخ شمسی: کارت فشرده و خوانا به‌جای سه select پراکنده ---------- */
+		.gvsr-jdate-group{display:inline-flex;align-items:center;gap:2px;background:#f8fafc;border:1px solid var(--gv-border);border-radius:10px;padding:3px;}
+		.gvsr-jdate-group select{
+			min-width:0;border:0;background:transparent;padding:6px 4px;font-size:12px;font-weight:700;
+			color:var(--gv-ink);border-radius:7px;cursor:pointer;text-align:center;-webkit-appearance:none;appearance:none;
+		}
+		.gvsr-jdate-group select:hover{background:#eef2f6;}
+		.gvsr-jdate-group select:focus{outline:0;background:#fff;box-shadow:0 0 0 2px var(--gv-accent-soft);}
+		.gvsr-jdate-group .gvsr-jdate-d{flex:0 0 42px;}
+		.gvsr-jdate-group .gvsr-jdate-m{flex:1 1 auto;min-width:64px;}
+		.gvsr-jdate-group .gvsr-jdate-y{flex:0 0 56px;}
+		.gvsr-jdate-compact{padding:2px;gap:1px;}
+		.gvsr-jdate-compact select{padding:5px 3px;font-size:10.6px;}
+		.gvsr-jdate-compact .gvsr-jdate-d{flex-basis:32px;}
+		.gvsr-jdate-compact .gvsr-jdate-y{flex-basis:48px;}
+
+		/* ---------- ورودی بازه ساعت شروع/پایان: کارت مرتب به‌جای دو باکس ساده ---------- */
+		.gvsr-time-range-row{display:flex;align-items:center;gap:12px;flex-wrap:wrap;background:#f8fafc;border:1px solid var(--gv-border);border-radius:12px;padding:12px 14px;}
+		.gvsr-time-box{display:flex;flex-direction:column;align-items:center;gap:4px;}
+		.gvsr-time-box-label{font-size:10px;font-weight:800;color:var(--gv-muted);}
+		.gvsr-time-input{width:52px!important;text-align:center;font-size:15px!important;font-weight:800;padding:8px 4px!important;border-radius:8px!important;-moz-appearance:textfield;}
+		.gvsr-time-input::-webkit-outer-spin-button,.gvsr-time-input::-webkit-inner-spin-button{-webkit-appearance:none;margin:0;}
+		.gvsr-time-colon{font-size:16px;font-weight:800;color:var(--gv-ink-soft);margin-top:14px;}
+		.gvsr-time-arrow{font-size:15px;color:var(--gv-accent);font-weight:800;}
+		.gvsr-time-duration{margin-inline-start:auto;background:var(--gv-accent-soft);color:var(--gv-accent-dark);font-weight:800;font-size:12px;padding:6px 14px;border-radius:20px;white-space:nowrap;}
+
 		.gvsr-row-del{background:var(--gv-red-soft);color:var(--gv-red);border:0;border-radius:7px;width:28px;height:28px;cursor:pointer;font-size:12px;}
 		.gvsr-vis-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;}
 		@media(max-width:700px){.gvsr-vis-grid{grid-template-columns:1fr;}}
@@ -3780,7 +3732,7 @@ function gv_sr_admin_styles() {
 		.gvsr-emp-accordion summary::-webkit-details-marker{display:none;}
 		.gvsr-emp-accordion[open]{background:#fff;box-shadow:var(--gv-shadow);}
 
-		.gvsr-section-toggle{background:var(--gv-surface);border:1px solid var(--gv-border);border-radius:var(--gv-radius-lg);padding:0;margin-bottom:16px;box-shadow:var(--gv-shadow);max-width:1100px;overflow:hidden;}
+		.gvsr-section-toggle{background:var(--gv-surface);border:1px solid var(--gv-border);border-radius:var(--gv-radius-lg);padding:0;margin-bottom:16px;box-shadow:var(--gv-shadow);max-width:1100px;overflow:hidden;scroll-margin-top:90px;}
 		.gvsr-section-toggle summary{cursor:pointer;list-style:none;font-size:14px;font-weight:800;color:var(--gv-ink);padding:16px 20px;display:flex;align-items:center;gap:8px;}
 		.gvsr-section-toggle summary::-webkit-details-marker{display:none;}
 		.gvsr-section-toggle summary::before{content:"›";display:inline-block;transition:transform .15s ease;color:var(--gv-muted);font-size:16px;}
@@ -3788,6 +3740,21 @@ function gv_sr_admin_styles() {
 		.gvsr-section-toggle summary:hover{background:#f8fafc;}
 		.gvsr-section-toggle .gvsr-toggle-count{font-weight:600;color:var(--gv-muted);font-size:12px;}
 		.gvsr-section-toggle-body{padding:0 20px 20px;border-top:1px solid var(--gv-border);padding-top:16px;}
+
+		/* ---------- ناوبری کارتی (بخش مدیریت تیم) ---------- */
+		.gvsr-nav-cards{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;max-width:1100px;margin-bottom:18px;}
+		@media(max-width:900px){.gvsr-nav-cards{grid-template-columns:repeat(2,1fr);}}
+		@media(max-width:520px){.gvsr-nav-cards{grid-template-columns:1fr;}}
+		.gvsr-nav-card{
+			display:flex;flex-direction:column;align-items:flex-start;gap:4px;text-align:right;
+			background:var(--gv-surface);border:1px solid var(--gv-border);border-radius:var(--gv-radius-md);
+			padding:14px 16px;cursor:pointer;font-family:inherit;transition:transform .15s ease,box-shadow .15s ease,border-color .15s ease;
+			box-shadow:var(--gv-shadow);
+		}
+		.gvsr-nav-card:hover{transform:translateY(-2px);box-shadow:var(--gv-shadow-lift);border-color:var(--gv-accent);}
+		.gvsr-nav-card-icon{font-size:19px;}
+		.gvsr-nav-card-title{font-size:12.8px;font-weight:800;color:var(--gv-ink);}
+		.gvsr-nav-card-desc{font-size:10.8px;color:var(--gv-muted);line-height:1.7;}
 
 		.gvsr-node-box,.gvsr-hub-box{border:1px dashed #cbd5e1;border-radius:var(--gv-radius-md);padding:14px 16px;margin-top:12px;}
 		.gvsr-sync-badge{display:inline-block;padding:3px 10px;border-radius:20px;font-size:10.5px;font-weight:800;}
@@ -3812,6 +3779,10 @@ function gv_sr_admin_styles() {
 		.gvsr-ql-note{width:100%;box-sizing:border-box;padding:8px 10px;border:1px solid var(--gv-border);border-radius:8px;font-family:inherit;font-size:12.3px;}
 		.gvsr-ql-note:focus{outline:0;border-color:var(--gv-accent);box-shadow:0 0 0 3px var(--gv-accent-soft);}
 		.gvsr-ql-project-select{padding:8px 10px;font-size:12.3px;font-weight:700;}
+		.gvsr-ql-field{width:100%;box-sizing:border-box;margin-top:6px;padding:9px 11px;border:1px solid var(--gv-border);border-radius:var(--gv-radius-sm);font-family:inherit;font-size:12.6px;color:var(--gv-ink);background:#fff;}
+		.gvsr-ql-field:focus{outline:0;border-color:var(--gv-accent);box-shadow:0 0 0 3px var(--gv-accent-soft);}
+		textarea.gvsr-ql-field{resize:vertical;}
+		.gvsr-ql-step-body label:not(.gvsr-ql-label){display:block;font-size:11.5px;font-weight:700;color:var(--gv-ink-soft);margin-bottom:12px;}
 
 		.gvsr-activity-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;}
 		@media(max-width:700px){.gvsr-activity-grid{grid-template-columns:repeat(3,1fr);}}
@@ -3887,6 +3858,10 @@ function gv_sr_render_report_detail( $report, $is_admin = false ) {
 	$growth   = gv_sr_get_growth( $report->id );
 	$types    = gv_sr_task_types();
 
+	/* برای مشتری، عنوان گزارش همیشه از روی تاریخِ بازه ساخته می‌شود (نه از
+	   فیلد آزادِ عنوان) تا هرگز چیزی مثل اسم کارمند در آن دیده نشود. */
+	$display_title = $is_admin ? $report->title : gv_sr_client_safe_report_label( $report );
+
 	$can = function ( $key ) use ( $vis, $is_admin ) {
 		return $is_admin || ! empty( $vis[ $key ] );
 	};
@@ -3899,31 +3874,23 @@ function gv_sr_render_report_detail( $report, $is_admin = false ) {
 	<div class="gvsr-report-view">
 
 		<div class="gvsr-report-card">
-			<h3>🧾 <?php echo esc_html( $report->title ); ?></h3>
+			<h3>🧾 <?php echo esc_html( $display_title ); ?></h3>
 			<p class="gvsr-hint-inline">
 				بازه گزارش: <b><?php echo esc_html( gv_sr_jalali_str( $report->period_start ) . ' تا ' . gv_sr_jalali_str( $report->period_end, true ) ); ?></b>
 				&nbsp;|&nbsp; مشتری: <b><?php echo esc_html( $report->client_name ); ?></b>
-				<?php if ( $report->overall_score > 0 ) : ?>
-					&nbsp;|&nbsp; امتیاز کلی سئو: <b><?php echo esc_html( gv_sr_fa_digits( $report->overall_score ) ); ?> از ۱۰۰</b>
-				<?php endif; ?>
 			</p>
 
 			<div class="gvsr-kpi-grid">
-				<div class="gvsr-kpi"><b><?php echo esc_html( number_format_i18n( count( $keywords ) ) ); ?></b><span>کلمه کلیدی رصدشده</span></div>
-				<div class="gvsr-kpi"><b><?php echo esc_html( number_format_i18n( count( $tasks ) ) ); ?></b><span>فعالیت ثبت‌شده</span></div>
-				<div class="gvsr-kpi"><b><?php echo esc_html( number_format_i18n( count( $growth ) ) ); ?></b><span>صفحه در حال رشد</span></div>
+				<div class="gvsr-kpi"><b><?php echo esc_html( gv_sr_friendly_number( count( $keywords ) ) ); ?></b><span>کلمه کلیدی رصدشده</span></div>
+				<div class="gvsr-kpi"><b><?php echo esc_html( gv_sr_friendly_number( count( $tasks ) ) ); ?></b><span>فعالیت ثبت‌شده</span></div>
+				<div class="gvsr-kpi"><b><?php echo esc_html( gv_sr_friendly_number( count( $growth ) ) ); ?></b><span>صفحه در حال رشد</span></div>
+				<?php
+				/* ساعت کارِ صرف‌شده اطلاعات داخلی تیم است و صرف‌نظر از تنظیم
+				   نمایش، هرگز برای مشتری (غیرمدیر) نشان داده نمی‌شود. */
+				if ( $is_admin ) :
+				?>
 				<div class="gvsr-kpi"><b><?php echo esc_html( gv_sr_fa_digits( $report->hours_spent ) ); ?><?php $flag( 'show_hours' ); ?></b><span>ساعت کار</span></div>
-				<div class="gvsr-kpi"><b>
-					<?php
-					if ( $report->traffic_before > 0 ) {
-						$growth_pct = round( ( ( $report->traffic_after - $report->traffic_before ) / max( 1, $report->traffic_before ) ) * 100 );
-						echo esc_html( gv_sr_fa_digits( ( $growth_pct >= 0 ? '+' : '' ) . $growth_pct ) ) . '٪';
-					} else {
-						echo '—';
-					}
-					$flag( 'show_traffic' );
-					?>
-				</b><span>رشد ترافیک ارگانیک</span></div>
+				<?php endif; ?>
 			</div>
 		</div>
 
@@ -3984,7 +3951,7 @@ function gv_sr_render_report_detail( $report, $is_admin = false ) {
 						<th data-sort-type="text">عنوان</th>
 						<th data-sort-type="text">کلمه هدف</th>
 						<th data-sort-type="date">تاریخ</th>
-						<th data-sort-type="number">ساعت</th>
+						<?php if ( $is_admin ) : ?><th data-sort-type="number">ساعت <span class="gvsr-hidden-flag">مخفی از مشتری</span></th><?php endif; ?>
 						<th class="no-sort">لینک</th>
 					</tr></thead>
 					<tbody>
@@ -3994,7 +3961,7 @@ function gv_sr_render_report_detail( $report, $is_admin = false ) {
 							<td><?php echo esc_html( $t->title ); ?></td>
 							<td><?php echo esc_html( $t->target_keyword ?: '—' ); ?></td>
 							<td data-sort-value="<?php echo esc_attr( strtotime( $t->work_date ) ); ?>"><?php echo esc_html( gv_sr_jalali_numeric( $t->work_date ) ); ?></td>
-							<td data-sort-value="<?php echo esc_attr( $t->hours ); ?>"><?php echo esc_html( $t->hours > 0 ? gv_sr_fa_digits( $t->hours ) : '—' ); ?></td>
+							<?php if ( $is_admin ) : ?><td data-sort-value="<?php echo esc_attr( $t->hours ); ?>"><?php echo esc_html( $t->hours > 0 ? gv_sr_fa_digits( $t->hours ) : '—' ); ?></td><?php endif; ?>
 							<td><?php if ( $t->url ) : ?><a href="<?php echo esc_url( $t->url ); ?>" target="_blank" rel="noopener">مشاهده ↗</a><?php else : ?>—<?php endif; ?></td>
 						</tr>
 					<?php endforeach; ?>
@@ -4008,7 +3975,7 @@ function gv_sr_render_report_detail( $report, $is_admin = false ) {
 		<div class="gvsr-report-card">
 			<h3>📈 رشد صفحات <?php $flag( 'show_growth' ); ?></h3>
 			<?php if ( empty( $growth ) ) : ?>
-				<div class="gvsr-chart-empty">ردیف رشدی برای این گزارش ثبت نشده است.</div>
+				<div class="gvsr-chart-empty">هنوز ردیف رشدی برای این گزارش ثبت نشده — به‌محض ثبت اولین بهبود، اینجا نمایش داده می‌شود.</div>
 			<?php else : ?>
 				<table class="gvsr-table">
 					<thead><tr><th>صفحه</th><th>شاخص</th><th>قبل</th><th>بعد</th><th>توضیح</th></tr></thead>
@@ -4056,10 +4023,6 @@ function gv_sr_shortcode( $atts ) {
 	.gvsr-front-login{background:#fff;border:1px solid #e5e7eb;border-radius:14px;padding:40px 24px;text-align:center;max-width:480px;margin:0 auto;}
 	.gvsr-front-login h3{margin:0 0 10px;font-size:16px;color:#1e293b;}
 	.gvsr-back-link{display:inline-block;margin-bottom:16px;color:#059669;font-weight:700;text-decoration:none;font-size:13px;}
-	.gvsr-client-list{background:#fff;border:1px solid #e5e7eb;border-radius:12px;overflow:hidden;}
-	.gvsr-client-list a{display:block;padding:14px 18px;text-decoration:none;color:#1e293b;border-top:1px solid #f1f5f9;}
-	.gvsr-client-list a:first-child{border-top:0;}
-	.gvsr-client-list a:hover{background:#f8fafc;}
 	</style>';
 
 	if ( ! is_user_logged_in() ) {
@@ -4069,12 +4032,15 @@ function gv_sr_shortcode( $atts ) {
 		return ob_get_clean();
 	}
 
-	$user_id     = get_current_user_id();
-	$viewing_id  = isset( $_GET['gv_report'] ) ? (int) $_GET['gv_report'] : 0;
+	/* توجه: پنل مشتری عمداً هیچ «نمای مدیر» یا امکان سوییچ بین مشتریان
+	   ندارد — هر کاربر فقط گزارش‌های متصل به حساب خودش را می‌بیند. */
+	$user_id    = get_current_user_id();
+	$viewing_id = isset( $_GET['gv_report'] ) ? (int) $_GET['gv_report'] : 0;
 
 	if ( $viewing_id > 0 ) {
-		$report = gv_sr_get_report( $viewing_id );
-		if ( ! $report || (int) $report->user_id !== $user_id || 'published' !== $report->status ) {
+		$report  = gv_sr_get_report( $viewing_id );
+		$allowed = $report && (int) $report->user_id === $user_id;
+		if ( ! $report || ! $allowed || 'published' !== $report->status ) {
 			echo '<div class="gvsr-empty">این گزارش پیدا نشد یا برای شما نیست.</div></div>';
 			return ob_get_clean();
 		}
@@ -4093,39 +4059,25 @@ function gv_sr_render_customer_dashboard( $user_id ) {
 	$reports = gv_sr_get_reports( array( 'user_id' => $user_id, 'status' => 'published' ) );
 
 	if ( empty( $reports ) ) {
-		echo '<div class="gvsr-empty">هنوز هیچ گزارش سئویی برای شما منتشر نشده است. به‌محض ثبت اولین گزارش توسط تیم سئو، این‌جا نمایش داده می‌شود.</div>';
+		echo '<div class="gvsr-empty">هنوز هیچ گزارش سئویی برای این کاربر منتشر نشده است. به‌محض ثبت اولین گزارش توسط تیم سئو، این‌جا نمایش داده می‌شود.</div>';
 		return;
 	}
 
 	$period_counts   = gv_sr_count_content_periods( $user_id );
-	$total_hours     = gv_sr_total_hours( $user_id );
 	$kw_summary      = gv_sr_keyword_status_summary( $user_id );
-	$traffic_trend   = gv_sr_traffic_trend( $user_id );
 	$kw_history      = gv_sr_keyword_history( $user_id );
-
-	$latest_traffic_growth = null;
-	if ( ! empty( $traffic_trend ) ) {
-		$first = reset( $traffic_trend );
-		$last  = end( $traffic_trend );
-		if ( $first['before'] > 0 ) {
-			$latest_traffic_growth = round( ( ( $last['after'] - $first['before'] ) / max( 1, $first['before'] ) ) * 100 );
-		}
-	}
-
 	?>
-	<div class="gvsr-kpi-grid">
-		<div class="gvsr-kpi"><b><?php echo esc_html( number_format_i18n( count( $reports ) ) ); ?></b><span>گزارش دریافت‌شده</span></div>
-		<div class="gvsr-kpi"><b><?php echo esc_html( number_format_i18n( $kw_summary['up'] ) ); ?></b><span>کلمه کلیدی بهبودیافته</span></div>
-		<div class="gvsr-kpi"><b><?php echo esc_html( number_format_i18n( $kw_summary['new'] ) ); ?></b><span>کلمه کلیدی تازه‌وارد</span></div>
-		<div class="gvsr-kpi"><b><?php echo esc_html( gv_sr_fa_digits( round( $total_hours, 1 ) ) ); ?></b><span>مجموع ساعت کار روی سایت شما</span></div>
-		<div class="gvsr-kpi"><b><?php echo null !== $latest_traffic_growth ? esc_html( gv_sr_fa_digits( ( $latest_traffic_growth >= 0 ? '+' : '' ) . $latest_traffic_growth ) . '٪' ) : '—'; ?></b><span>رشد ترافیک ارگانیک (کل دوره)</span></div>
+	<div class="gvsr-kpi-grid" style="grid-template-columns:repeat(3,1fr);">
+		<div class="gvsr-kpi"><b><?php echo esc_html( gv_sr_friendly_number( count( $reports ) ) ); ?></b><span>گزارش دریافت‌شده</span></div>
+		<div class="gvsr-kpi"><b><?php echo esc_html( gv_sr_friendly_number( $kw_summary['up'] ) ); ?></b><span>کلمه کلیدی بهبودیافته</span></div>
+		<div class="gvsr-kpi"><b><?php echo esc_html( gv_sr_friendly_number( $kw_summary['new'] ) ); ?></b><span>کلمه کلیدی تازه‌وارد</span></div>
 	</div>
 
 	<div class="gvsr-report-card">
 		<h3>🗓️ تعداد محتوای منتشرشده در بازه‌های اخیر</h3>
 		<div class="gvsr-period-grid">
 			<?php foreach ( $period_counts as $days => $count ) : ?>
-				<div class="gvsr-period-item"><b><?php echo esc_html( number_format_i18n( $count ) ); ?></b><span>‌طی <?php echo esc_html( gv_sr_fa_digits( $days ) ); ?> روز اخیر</span></div>
+				<div class="gvsr-period-item"><b><?php echo esc_html( gv_sr_friendly_number( $count ) ); ?></b><span>‌طی <?php echo esc_html( gv_sr_fa_digits( $days ) ); ?> روز اخیر</span></div>
 			<?php endforeach; ?>
 		</div>
 		<?php
@@ -4136,17 +4088,6 @@ function gv_sr_render_customer_dashboard( $user_id ) {
 		echo gv_sr_svg_bar_chart( $bar_items, '#059669' ); // phpcs:ignore
 		?>
 	</div>
-
-	<?php if ( ! empty( $traffic_trend ) && count( $traffic_trend ) > 1 ) : ?>
-	<div class="gvsr-report-card">
-		<h3>📊 روند ترافیک ارگانیک در طول زمان</h3>
-		<?php
-		$line_items = array();
-		foreach ( $traffic_trend as $t ) { $line_items[] = array( 'label' => $t['label'], 'value' => $t['after'] ); }
-		echo gv_sr_svg_line_chart( $line_items, '#2563eb' ); // phpcs:ignore
-		?>
-	</div>
-	<?php endif; ?>
 
 	<?php if ( ! empty( $kw_history ) ) : ?>
 	<div class="gvsr-report-card">
@@ -4179,15 +4120,13 @@ function gv_sr_render_customer_dashboard( $user_id ) {
 				<thead><tr>
 					<th data-sort-type="text">عنوان گزارش</th>
 					<th data-sort-type="date">بازه گزارش</th>
-					<th data-sort-type="number">ساعت کار</th>
 					<th class="no-sort">مشاهده</th>
 				</tr></thead>
 				<tbody>
 				<?php foreach ( $reports as $r ) : ?>
 					<tr>
-						<td><?php echo esc_html( $r->title ); ?></td>
+						<td><?php echo esc_html( gv_sr_client_safe_report_label( $r ) ); ?></td>
 						<td data-sort-value="<?php echo esc_attr( strtotime( $r->period_end ) ); ?>"><?php echo esc_html( gv_sr_jalali_numeric( $r->period_start ) . ' تا ' . gv_sr_jalali_numeric( $r->period_end ) ); ?></td>
-						<td data-sort-value="<?php echo esc_attr( $r->hours_spent ); ?>"><?php echo esc_html( gv_sr_fa_digits( $r->hours_spent ) ); ?></td>
 						<td><a href="<?php echo esc_url( add_query_arg( 'gv_report', $r->id ) ); ?>" class="gvsr-btn-ghost" style="background:#ecfdf5;color:#065f46;border-color:#d1fae5;">مشاهده گزارش کامل ↗</a></td>
 					</tr>
 				<?php endforeach; ?>
@@ -4644,7 +4583,7 @@ function gv_sr_render_project_form( $project ) {
 			</datalist>
 
 			<div class="gvsr-grid-2">
-				<label>اتصال به کاربر سایت (اختیاری)
+				<label>اتصال به کاربر سایت (اختیاری — پیش‌فرض کاربری که گزارش‌های این پروژه به آن نمایش داده می‌شود)
 					<?php
 					wp_dropdown_users( array(
 						'name'              => 'user_id',
@@ -4708,7 +4647,7 @@ function gv_sr_render_project_form( $project ) {
 
 		<div class="gvsr-box">
 			<h2>👥 اعضای پروژه</h2>
-			<p class="gvsr-hint">هر کارمندی که به‌عنوان عضو اضافه شود، هنگام ثبت کارکرد در تب «کارکرد من» می‌تواند این پروژه را انتخاب کند.</p>
+			<p class="gvsr-hint">هر کارمندی که به‌عنوان عضو اضافه شود، هنگام ثبت کارکرد در تب «➕ ثبت گزارش» می‌تواند این پروژه را انتخاب کند.</p>
 			<table class="gvsr-repeater" id="gvsr-repeater-members">
 				<thead><tr><th style="width:55%;">کارمند</th><th>نقش در پروژه</th><th style="width:34px;"></th></tr></thead>
 				<tbody>

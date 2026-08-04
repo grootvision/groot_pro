@@ -2,21 +2,13 @@
 if ( ! defined( 'ABSPATH' ) ) exit;
 /**
  * ==========================================================
- *  Groot Vision — حالت تعمیر و نگهداری سایت (نسخه ۲)
+ *  Groot Vision — حالت تعمیر و نگهداری سایت (نسخه ۳ — ری‌دیزاین کامل)
  *  ------------------------------------------------------------
- *  تغییرات نسبت به نسخه قبل:
- *   ۱) استایل صفحه‌ی تنظیمات هماهنگ با بقیه‌ی افزونه‌های
- *      Groot Vision شد (هدر سبز گرادیانی + کارت‌های سفید).
- *   ۲) به‌جای منوی جداگانه، زیرمنوی هاب گروت ویژن شد.
- *   ۳) امکانات جدید:
- *      - سه پیش‌فرض رنگی آماده + رنگ‌بندی کاملاً دستی
- *      - زمان‌بندی خودکار (شروع/پایان تعمیر بدون نیاز به
- *        روشن/خاموش کردن دستی)
- *      - لیست سفید IP برای مشاهده‌ی سایت توسط تیم فنی
- *        در حین فعال بودن حالت تعمیر
- *      - لینک پیش‌نمایش اختصاصی برای مشتری (بدون نیاز به لاگین)
- *      - فرم «اطلاع‌رسانی ایمیلی هنگام بازگشایی» + خروجی CSV
- *      - فیلد CSS اختصاصی برای شخصی‌سازی بیشتر
+ *  همان قابلیت‌های نسخه‌ی قبل (زمان‌بندی خودکار/دستی، لیست سفید IP،
+ *  لینک پیش‌نمایش، رنگ‌بندی، فرم اطلاع‌رسانی ایمیلی، CSS اختصاصی، ...)
+ *  فقط با یک ظاهر کاملاً متفاوت: تم «کارگاه/بلوپرینت» به‌جای اسطرلاب
+ *  طلایی-فیروزه‌ای — نوار راه‌راه احتیاط، کارت‌های مربعی با حاشیه‌ی
+ *  ضخیم و سایه‌ی افست (سبک نئوبروتالیست)، بک‌گراند شبکه‌ی نقشه‌ی فنی.
  * ==========================================================
  */
 
@@ -25,43 +17,76 @@ define( 'WPMC_SUBS_OPT', 'wpmc_subscribers' );
 define( 'WPMC_NONCE', 'wpmc_save_action' );
 
 /* ==========================================================================
-   1) پیش‌فرض‌ها و پریست‌های رنگی
+   1) پیش‌فرض‌ها و پریست‌های رنگی (تم جدید: کارگاه/بلوپرینت)
    ========================================================================== */
 function wpmc_color_presets() {
 	return array(
-		'emerald' => array(
-			'label' => 'زمردی گروت ویژن (هماهنگ با پیشخوان)',
-			'color_primary'   => '#4ade80',
-			'color_secondary' => '#facc15',
-			'color_accent'    => '#22c55e',
-			'color_bg1'       => '#0b1f26',
-			'color_bg2'       => '#0e4037',
+		/* ---------- سبک «کارگاه/بلوپرینت» (نئوبروتالیست) ---------- */
+		'hazard' => array(
+			'style' => 'brutalist',
+			'label' => 'راه‌راه احتیاط (نارنجی/زرد/مشکی)',
+			'color_primary'   => '#FF6B35',
+			'color_secondary' => '#FFD23F',
+			'color_accent'    => '#111111',
+			'color_bg1'       => '#FFFBEA',
+			'color_bg2'       => '#FFF0C2',
 		),
-		'astrolabe' => array(
-			'label' => 'اسطرلاب (طلایی/فیروزه‌ای/یاقوتی)',
-			'color_primary'   => '#D4AF6A',
-			'color_secondary' => '#2FB8B0',
-			'color_accent'    => '#B23A48',
-			'color_bg1'       => '#0B1220',
-			'color_bg2'       => '#2A123B',
+		'blueprint' => array(
+			'style' => 'brutalist',
+			'label' => 'بلوپرینت مهندسی (آبی/سفید/مشکی)',
+			'color_primary'   => '#2563EB',
+			'color_secondary' => '#38BDF8',
+			'color_accent'    => '#0B1220',
+			'color_bg1'       => '#EAF2FF',
+			'color_bg2'       => '#D3E6FF',
 		),
-		'ocean' => array(
-			'label' => 'اقیانوسی (آبی/فیروزه‌ای)',
-			'color_primary'   => '#38bdf8',
-			'color_secondary' => '#2dd4bf',
-			'color_accent'    => '#6366f1',
-			'color_bg1'       => '#050b18',
-			'color_bg2'       => '#0f2340',
+		'punk' => array(
+			'style' => 'brutalist',
+			'label' => 'پانک رنگی (صورتی/لیمویی/مشکی)',
+			'color_primary'   => '#FF2D75',
+			'color_secondary' => '#C6FF00',
+			'color_accent'    => '#111111',
+			'color_bg1'       => '#FFF1F6',
+			'color_bg2'       => '#FFE1EC',
+		),
+
+		/* ---------- سبک «ترمینال/فضایی» ---------- */
+		'matrix' => array(
+			'style' => 'terminal',
+			'label' => 'ماتریکس (سبز نئون روی مشکی)',
+			'color_primary'   => '#00FF9C',
+			'color_secondary' => '#0AFFEF',
+			'color_accent'    => '#0A0E14',
+			'color_bg1'       => '#05070A',
+			'color_bg2'       => '#0D1420',
+		),
+		'cyberpunk' => array(
+			'style' => 'terminal',
+			'label' => 'سایبرپانک (صورتی نئون/فیروزه‌ای)',
+			'color_primary'   => '#FF2E88',
+			'color_secondary' => '#00E5FF',
+			'color_accent'    => '#0A0616',
+			'color_bg1'       => '#0B0414',
+			'color_bg2'       => '#170B28',
+		),
+		'nebula' => array(
+			'style' => 'terminal',
+			'label' => 'سحابی فضایی (بنفش/آبی کهکشانی)',
+			'color_primary'   => '#8B5CF6',
+			'color_secondary' => '#38BDF8',
+			'color_accent'    => '#0B0B1A',
+			'color_bg1'       => '#07070F',
+			'color_bg2'       => '#130B26',
 		),
 	);
 }
 
 function wpmc_default_options() {
-	$preset = wpmc_color_presets()['emerald'];
+	$preset = wpmc_color_presets()['hazard'];
 	return array_merge( array(
 		'enabled'          => 0,
 		'title'            => 'در حال ساخته‌شدنیم!',
-		'description'      => 'داریم یه چیز خفن‌تر می‌سازیم 🌟 یکم دیگه صبر کن، به‌زودی با ظاهری جدید و تجربه‌ای بهتر برمی‌گردیم.',
+		'description'      => 'داریم یه چیز خفن‌تر می‌سازیم 🛠️ یکم دیگه صبر کن، به‌زودی با ظاهری جدید و تجربه‌ای بهتر برمی‌گردیم.',
 		'badge_text'       => 'در حال ساخت',
 		'show_timer'       => 1,
 		'end_datetime'     => '',
@@ -73,9 +98,10 @@ function wpmc_default_options() {
 		'feature2'         => 'سریع‌تر از قبل',
 		'feature3'         => 'ظاهری تازه',
 		'footer_text'      => 'در حال بروزرسانی سایت هستیم',
-		'color_preset'     => 'emerald',
+		'color_preset'     => 'hazard',
+		'theme_style'      => 'brutalist', // brutalist | terminal
 
-		// امکانات جدید
+		// امکانات
 		'schedule_mode'    => 'manual', // manual | auto
 		'start_datetime'   => '',
 		'ip_whitelist'     => '',
@@ -205,7 +231,7 @@ function wpmc_render_admin_page() {
 			if ( $ip !== '' && ( filter_var( $ip, FILTER_VALIDATE_IP ) || $ip === '' ) ) { $ip_clean[] = $ip; }
 		}
 
-		$color_preset = sanitize_key( $_POST['color_preset'] ?? 'emerald' );
+		$color_preset = sanitize_key( $_POST['color_preset'] ?? 'hazard' );
 		$presets = wpmc_color_presets();
 		if ( 'custom' === $color_preset ) {
 			$colors = array(
@@ -217,11 +243,11 @@ function wpmc_render_admin_page() {
 			);
 		} elseif ( isset( $presets[ $color_preset ] ) ) {
 			$colors = $presets[ $color_preset ];
-			unset( $colors['label'] );
+			unset( $colors['label'], $colors['style'] );
 		} else {
-			$color_preset = 'emerald';
-			$colors = $presets['emerald'];
-			unset( $colors['label'] );
+			$color_preset = 'hazard';
+			$colors = $presets['hazard'];
+			unset( $colors['label'], $colors['style'] );
 		}
 
 		$new = array_merge( array(
@@ -240,6 +266,7 @@ function wpmc_render_admin_page() {
 			'feature3'         => sanitize_text_field( wp_unslash( $_POST['feature3'] ?? '' ) ),
 			'footer_text'      => sanitize_text_field( wp_unslash( $_POST['footer_text'] ?? '' ) ),
 			'color_preset'     => $color_preset,
+			'theme_style'      => ( ( $_POST['theme_style'] ?? 'brutalist' ) === 'terminal' ) ? 'terminal' : 'brutalist',
 
 			'schedule_mode'    => ( ( $_POST['schedule_mode'] ?? 'manual' ) === 'auto' ) ? 'auto' : 'manual',
 			'start_datetime'   => $raw_start,
@@ -282,29 +309,86 @@ function wpmc_render_admin_page() {
 
 	$preview_url = ! empty( $o['preview_token'] ) ? add_query_arg( 'gv_preview', $o['preview_token'], home_url( '/' ) ) : '';
 	$status_badge = wpmc_is_active_now( $o )
-		? '<span class="wpmc-status-pill on">🟢 هم‌اکنون فعال است</span>'
+		? '<span class="wpmc-status-pill on">🟠 هم‌اکنون فعال است</span>'
 		: '<span class="wpmc-status-pill off">⚪ هم‌اکنون غیرفعال است</span>';
 	?>
 	<div class="wrap" dir="rtl" style="font-family:'Vazirmatn',Tahoma,sans-serif; max-width:1000px;">
 		<style>
-			.wpmc-header{background:linear-gradient(120deg,#0e4037,#145c4d);color:#fff;padding:26px 30px;border-radius:16px;margin:20px 0 24px;box-shadow:0 10px 30px rgba(14,64,55,.3);display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:14px;}
-			.wpmc-header h1{margin:0;font-size:22px;color:#fff;}
-			.wpmc-header p{margin:8px 0 0;font-size:13px;color:#cbd5e1;}
-			.wpmc-status-pill{padding:7px 16px;border-radius:20px;font-size:12.5px;font-weight:700;}
-			.wpmc-status-pill.on{background:rgba(74,222,128,.15);border:1px solid #4ade80;color:#4ade80;}
-			.wpmc-status-pill.off{background:rgba(148,163,184,.18);border:1px solid #94a3b8;color:#cbd5e1;}
-			.wpmc-card{background:#fff;border:1px solid #e5e7eb;border-radius:16px;padding:24px;margin-bottom:20px;box-shadow:0 2px 10px rgba(0,0,0,.03);}
-			.wpmc-card h2{margin-top:0;font-size:16px;color:#0f172a;}
-			.wpmc-card .description{color:#94a3b8;}
-			.wpmc-preset-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:14px;}
-			.wpmc-preset{border:2px solid #e2e8f0;border-radius:12px;padding:12px;cursor:pointer;text-align:center;}
-			.wpmc-preset.active{border-color:#0e4037;box-shadow:0 0 0 2px rgba(14,64,55,.1);}
-			.wpmc-preset-swatch{height:34px;border-radius:8px;margin-bottom:8px;}
-			.wpmc-preset span{font-size:12px;font-weight:600;color:#334155;}
-			.wpmc-copybox{display:flex;gap:8px;align-items:center;background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:10px 14px;font-family:monospace;direction:ltr;text-align:left;font-size:12.5px;overflow-x:auto;}
-			.wpmc-btn-mini{background:#0e4037;color:#fff !important;border:none;padding:6px 14px;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;text-decoration:none;display:inline-block;}
+			/* ============ پنل مدیریت — تم کارگاه/بلوپرینت نئوبروتالیست ============ */
+			#wpmc-admin-root{ --ink:#111111; --paper:#FFFBEA; --panel:#FFFFFF; --hazard:#FF6B35; --hazard-2:#FFD23F; }
+			#wpmc-admin-root{ background:var(--paper); padding:4px; }
+			#wpmc-admin-root .wpmc-tape{
+				height:22px; margin:0 0 20px; border:3px solid var(--ink);
+				background:repeating-linear-gradient(-45deg,var(--hazard-2) 0 18px,var(--ink) 18px 22px);
+				box-shadow:5px 5px 0 var(--ink);
+			}
+			.wpmc-header{
+				background:var(--panel); color:var(--ink); padding:24px 28px; margin:0 0 24px;
+				border:3px solid var(--ink); box-shadow:8px 8px 0 var(--ink);
+				display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:14px;
+			}
+			.wpmc-header h1{ margin:0; font-size:22px; color:var(--ink); font-weight:900; }
+			.wpmc-header p{ margin:8px 0 0; font-size:13px; color:#555; }
+			.wpmc-status-pill{ padding:8px 16px; border:2.5px solid var(--ink); font-size:12.5px; font-weight:800; box-shadow:3px 3px 0 var(--ink); }
+			.wpmc-status-pill.on{ background:var(--hazard); color:var(--ink); }
+			.wpmc-status-pill.off{ background:#eee; color:#555; }
+
+			.wpmc-card{
+				background:var(--panel); border:3px solid var(--ink); box-shadow:6px 6px 0 var(--ink);
+				padding:24px; margin-bottom:24px;
+			}
+			.wpmc-card h2{ margin-top:0; font-size:15.5px; color:var(--ink); font-weight:900; display:flex; align-items:center; gap:8px; }
+			.wpmc-card h2::before{ content:""; width:10px; height:10px; background:var(--hazard); border:2px solid var(--ink); display:inline-block; }
+			.wpmc-card .description{ color:#666; }
+			#wpmc-admin-root input[type=text],#wpmc-admin-root input[type=date],#wpmc-admin-root input[type=time],#wpmc-admin-root input[type=number],#wpmc-admin-root textarea{
+				border:2.5px solid var(--ink) !important; border-radius:0 !important; box-shadow:none !important;
+			}
+			#wpmc-admin-root input[type=text]:focus,#wpmc-admin-root textarea:focus{ border-color:var(--hazard) !important; box-shadow:3px 3px 0 var(--ink) !important; }
+
+			.wpmc-style-grid{ display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+			@media(max-width:700px){ .wpmc-style-grid{ grid-template-columns:1fr; } }
+			.wpmc-style-card{ border:2.5px solid var(--ink); background:#fff; padding:14px; cursor:pointer; text-align:center; display:block; }
+			.wpmc-style-card.active{ background:var(--hazard-2); box-shadow:5px 5px 0 var(--ink); }
+			.wpmc-style-card b{ display:block; font-size:13px; color:var(--ink); margin-bottom:4px; }
+			.wpmc-style-card span{ font-size:11px; color:#555; }
+			.wpmc-style-preview{ height:64px; border:2px solid var(--ink); margin-bottom:10px; position:relative; overflow:hidden; }
+			.wpmc-style-preview-brutalist{ background:#FFFBEA; }
+			.wpmc-sp-tape{ position:absolute; top:0; left:0; right:0; height:10px; background:repeating-linear-gradient(-45deg,#FFD23F 0 6px,#111 6px 8px); }
+			.wpmc-sp-box{ position:absolute; bottom:8px; right:10px; left:10px; height:28px; background:#fff; border:2px solid #111; box-shadow:3px 3px 0 #111; }
+			.wpmc-style-preview-terminal{ background:#05070A; }
+			.wpmc-sp-dot{ position:absolute; top:6px; width:6px; height:6px; border-radius:50%; }
+			.wpmc-sp-dot.r{ right:8px; background:#ff5f56; } .wpmc-sp-dot.y{ right:18px; background:#ffbd2e; } .wpmc-sp-dot.g{ right:28px; background:#27c93f; }
+			.wpmc-sp-line{ position:absolute; right:8px; left:8px; top:22px; height:4px; background:#00FF9C; opacity:.85; box-shadow:0 0 6px #00FF9C; }
+			.wpmc-sp-line.short{ top:32px; width:55%; background:#0AFFEF; box-shadow:0 0 6px #0AFFEF; }
+
+			.wpmc-preset-grid{ display:grid; grid-template-columns:repeat(3,1fr); gap:12px; margin-bottom:16px; }
+			.wpmc-preset{ border:2.5px solid var(--ink); padding:12px; cursor:pointer; text-align:center; background:#fff; }
+			.wpmc-preset.active{ background:var(--hazard-2); box-shadow:4px 4px 0 var(--ink); }
+			.wpmc-preset-swatch{ height:30px; border:2px solid var(--ink); margin-bottom:8px; }
+			.wpmc-preset span{ font-size:11.5px; font-weight:800; color:var(--ink); }
+
+			.wpmc-copybox{
+				display:flex; gap:8px; align-items:center; background:#fff; border:2.5px solid var(--ink);
+				padding:10px 14px; font-family:monospace; direction:ltr; text-align:left; font-size:12.5px; overflow-x:auto;
+			}
+			.wpmc-btn-mini{
+				background:var(--ink); color:#fff !important; border:2.5px solid var(--ink); padding:7px 16px;
+				font-size:12px; font-weight:800; cursor:pointer; text-decoration:none; display:inline-block;
+				box-shadow:3px 3px 0 var(--hazard); transition:transform .1s ease, box-shadow .1s ease;
+			}
+			.wpmc-btn-mini:hover{ transform:translate(-2px,-2px); box-shadow:5px 5px 0 var(--hazard); color:#fff !important; }
+			.wpmc-btn-mini:active{ transform:translate(0,0); box-shadow:0 0 0 var(--hazard); }
+			#wpmc-admin-root .button-primary{
+				background:var(--hazard) !important; border:2.5px solid var(--ink) !important; color:var(--ink) !important;
+				border-radius:0 !important; font-weight:900 !important; text-shadow:none !important; box-shadow:4px 4px 0 var(--ink) !important;
+				padding:6px 18px !important; height:auto !important; transition:transform .1s ease, box-shadow .1s ease;
+			}
+			#wpmc-admin-root .button-primary:hover{ transform:translate(-2px,-2px); box-shadow:6px 6px 0 var(--ink) !important; }
 			@media(max-width:782px){ .wpmc-preset-grid{ grid-template-columns:1fr; } }
 		</style>
+
+		<div id="wpmc-admin-root">
+		<div class="wpmc-tape" aria-hidden="true"></div>
 
 		<div class="wpmc-header">
 			<div>
@@ -394,27 +478,52 @@ function wpmc_render_admin_page() {
 			</div>
 
 			<div class="wpmc-card">
+				<h2>🎭 استایل کلی نمایش</h2>
+				<p class="description" style="margin-top:-4px;">دو ظاهر کاملاً متفاوت برای صفحه‌ی تعمیر — با انتخاب هرکدام، پیش‌فرض‌های رنگی مخصوص همان استایل پایین‌تر نشان داده می‌شود.</p>
+				<div class="wpmc-style-grid">
+					<label class="wpmc-style-card <?php echo $o['theme_style'] === 'brutalist' ? 'active' : ''; ?>" data-style="brutalist">
+						<input type="radio" name="theme_style" value="brutalist" <?php checked( $o['theme_style'], 'brutalist' ); ?> style="display:none;">
+						<div class="wpmc-style-preview wpmc-style-preview-brutalist">
+							<span class="wpmc-sp-tape"></span>
+							<span class="wpmc-sp-box"></span>
+						</div>
+						<b>🛠️ کارگاه / بلوپرینت</b>
+						<span>حاشیه‌ی ضخیم، سایه‌ی افست، راه‌راه هشدار</span>
+					</label>
+					<label class="wpmc-style-card <?php echo $o['theme_style'] === 'terminal' ? 'active' : ''; ?>" data-style="terminal">
+						<input type="radio" name="theme_style" value="terminal" <?php checked( $o['theme_style'], 'terminal' ); ?> style="display:none;">
+						<div class="wpmc-style-preview wpmc-style-preview-terminal">
+							<span class="wpmc-sp-dot r"></span><span class="wpmc-sp-dot y"></span><span class="wpmc-sp-dot g"></span>
+							<span class="wpmc-sp-line"></span><span class="wpmc-sp-line short"></span>
+						</div>
+						<b>👾 ترمینال / فضایی</b>
+						<span>مانیتور مشکی، نئون سبز، حس کدنویسی و فضا</span>
+					</label>
+				</div>
+			</div>
+
+			<div class="wpmc-card">
 				<h2>🎨 رنگ‌بندی</h2>
 				<div class="wpmc-preset-grid">
 					<?php foreach ( $presets as $key => $p ) : ?>
-						<label class="wpmc-preset <?php echo $o['color_preset'] === $key ? 'active' : ''; ?>">
+						<label class="wpmc-preset <?php echo $o['color_preset'] === $key ? 'active' : ''; ?>" data-style="<?php echo esc_attr( $p['style'] ); ?>">
 							<input type="radio" name="color_preset" value="<?php echo esc_attr( $key ); ?>" <?php checked( $o['color_preset'], $key ); ?> style="display:none;">
 							<div class="wpmc-preset-swatch" style="background:linear-gradient(90deg, <?php echo esc_attr( $p['color_primary'] ); ?>, <?php echo esc_attr( $p['color_secondary'] ); ?>, <?php echo esc_attr( $p['color_accent'] ); ?>);"></div>
 							<span><?php echo esc_html( $p['label'] ); ?></span>
 						</label>
 					<?php endforeach; ?>
-					<label class="wpmc-preset <?php echo $o['color_preset'] === 'custom' ? 'active' : ''; ?>">
+					<label class="wpmc-preset <?php echo $o['color_preset'] === 'custom' ? 'active' : ''; ?>" data-style="any">
 						<input type="radio" name="color_preset" value="custom" <?php checked( $o['color_preset'], 'custom' ); ?> style="display:none;">
 						<div class="wpmc-preset-swatch" style="background:repeating-linear-gradient(45deg,#e2e8f0,#e2e8f0 6px,#cbd5e1 6px,#cbd5e1 12px);"></div>
 						<span>دلخواه (پایین انتخاب کنید)</span>
 					</label>
 				</div>
 				<table class="form-table" role="presentation" id="wpmc-custom-colors">
-					<tr><th scope="row"><label for="color_primary">رنگ اصلی</label></th><td><input type="text" id="color_primary" name="color_primary" class="wpmc-color-field" value="<?php echo esc_attr( $o['color_primary'] ); ?>" /></td></tr>
+					<tr><th scope="row"><label for="color_primary">رنگ اصلی (نوار راه‌راه)</label></th><td><input type="text" id="color_primary" name="color_primary" class="wpmc-color-field" value="<?php echo esc_attr( $o['color_primary'] ); ?>" /></td></tr>
 					<tr><th scope="row"><label for="color_secondary">رنگ ثانویه</label></th><td><input type="text" id="color_secondary" name="color_secondary" class="wpmc-color-field" value="<?php echo esc_attr( $o['color_secondary'] ); ?>" /></td></tr>
-					<tr><th scope="row"><label for="color_accent">رنگ تأکیدی</label></th><td><input type="text" id="color_accent" name="color_accent" class="wpmc-color-field" value="<?php echo esc_attr( $o['color_accent'] ); ?>" /></td></tr>
-					<tr><th scope="row"><label for="color_bg1">پس‌زمینه ۱</label></th><td><input type="text" id="color_bg1" name="color_bg1" class="wpmc-color-field" value="<?php echo esc_attr( $o['color_bg1'] ); ?>" /></td></tr>
-					<tr><th scope="row"><label for="color_bg2">پس‌زمینه ۲</label></th><td><input type="text" id="color_bg2" name="color_bg2" class="wpmc-color-field" value="<?php echo esc_attr( $o['color_bg2'] ); ?>" /></td></tr>
+					<tr><th scope="row"><label for="color_accent">رنگ مرکب/حاشیه‌ها</label></th><td><input type="text" id="color_accent" name="color_accent" class="wpmc-color-field" value="<?php echo esc_attr( $o['color_accent'] ); ?>" /></td></tr>
+					<tr><th scope="row"><label for="color_bg1">پس‌زمینه کاغذی</label></th><td><input type="text" id="color_bg1" name="color_bg1" class="wpmc-color-field" value="<?php echo esc_attr( $o['color_bg1'] ); ?>" /></td></tr>
+					<tr><th scope="row"><label for="color_bg2">پس‌زمینه شبکه</label></th><td><input type="text" id="color_bg2" name="color_bg2" class="wpmc-color-field" value="<?php echo esc_attr( $o['color_bg2'] ); ?>" /></td></tr>
 				</table>
 			</div>
 
@@ -454,7 +563,7 @@ function wpmc_render_admin_page() {
 						<td>
 							<p><strong><?php echo esc_html( $subs_count ); ?></strong> ایمیل ثبت شده است.</p>
 							<a class="wpmc-btn-mini" href="<?php echo esc_url( wp_nonce_url( admin_url( 'admin-post.php?action=wpmc_export_subscribers' ), WPMC_NONCE ) ); ?>">⬇️ خروجی CSV</a>
-							<a class="wpmc-btn-mini" style="background:#b91c1c;" href="<?php echo esc_url( wp_nonce_url( admin_url( 'admin-post.php?action=wpmc_clear_subscribers' ), WPMC_NONCE ) ); ?>" onclick="return confirm('همه مشترکین پاک شوند؟');">🗑️ پاک کردن لیست</a>
+							<a class="wpmc-btn-mini" style="background:#b91c1c;box-shadow:3px 3px 0 var(--ink);" href="<?php echo esc_url( wp_nonce_url( admin_url( 'admin-post.php?action=wpmc_clear_subscribers' ), WPMC_NONCE ) ); ?>" onclick="return confirm('همه مشترکین پاک شوند؟');">🗑️ پاک کردن لیست</a>
 						</td>
 					</tr>
 				</table>
@@ -479,10 +588,11 @@ function wpmc_render_admin_page() {
 			<?php submit_button( 'ذخیره تنظیمات', 'primary', 'wpmc_save' ); ?>
 		</form>
 
-		<hr style="margin-top:40px;">
-		<p style="text-align:center; color:#888; font-size:13px;">
-			ساخته شده توسط علیرضا رحمتی | اینستاگرام: <a href="https://instagram.com/grootvision" target="_blank">grootvision</a> | تلگرام: <a href="https://t.me/grootvision" target="_blank">grootvision</a>
+		<div class="wpmc-tape" style="margin:30px 0 16px;" aria-hidden="true"></div>
+		<p style="text-align:center; color:#555; font-size:13px; font-weight:700;">
+			ساخته شده توسط علیرضا رحمتی | اینستاگرام: <a href="https://instagram.com/grootvision" target="_blank" style="color:var(--ink);">grootvision</a> | تلگرام: <a href="https://t.me/grootvision" target="_blank" style="color:var(--ink);">grootvision</a>
 		</p>
+		</div>
 	</div>
 
 	<script>
@@ -505,6 +615,30 @@ function wpmc_render_admin_page() {
 			$('.wpmc-preset').removeClass('active');
 			$(this).closest('.wpmc-preset').addClass('active');
 			toggleCustomColors();
+		});
+
+		/* فیلتر پیش‌فرض‌های رنگی بر اساس استایل انتخاب‌شده */
+		function filterPresetsByStyle(){
+			var style = $('input[name=theme_style]:checked').val();
+			$('.wpmc-preset[data-style]').each(function(){
+				var pStyle = $(this).data('style');
+				$(this).toggle(pStyle === style || pStyle === 'any');
+			});
+		}
+		filterPresetsByStyle();
+		$('input[name=theme_style]').on('change', function(){
+			$('.wpmc-style-card').removeClass('active');
+			$(this).closest('.wpmc-style-card').addClass('active');
+			filterPresetsByStyle();
+			// اگر پریست فعلی متعلق به استایل جدید نیست، اولین پریست همان استایل را انتخاب کن
+			var style = $(this).val();
+			var current = $('input[name=color_preset]:checked').closest('.wpmc-preset').data('style');
+			if (current !== style && current !== 'any') {
+				var firstMatch = $('.wpmc-preset[data-style="' + style + '"]:first');
+				if (firstMatch.length) {
+					firstMatch.find('input[name=color_preset]').prop('checked', true).trigger('change');
+				}
+			}
 		});
 
 		var url = $('#wpmc-preview-url').text();
@@ -600,25 +734,19 @@ function wpmc_resolve_end_timestamp( $raw_datetime ) {
 	}
 }
 
-/** تولید خطوط مدرج (تیک‌های) لبه‌ی اسطرلاب — عنصر تزئینی */
-function wpmc_astrolabe_ticks() {
-	$out = '';
-	for ( $i = 0; $i < 24; $i++ ) {
-		$deg      = $i * 15;
-		$is_major = ( $i % 6 === 0 );
-		$y1       = $is_major ? 4 : 6.5;
-		$width    = $is_major ? 1.6 : 0.8;
-		$opacity  = $is_major ? 0.95 : 0.4;
-		$out .= '<line x1="50" y1="' . $y1 . '" x2="50" y2="11" stroke="var(--wpmc-gold)" stroke-width="' . $width . '" opacity="' . $opacity . '" transform="rotate(' . $deg . ' 50 50)"/>';
+function wpmc_render_maintenance_html( $o, $end_ts ) {
+	if ( 'terminal' === ( $o['theme_style'] ?? 'brutalist' ) ) {
+		wpmc_render_terminal_theme( $o, $end_ts );
+		return;
 	}
-	return $out;
+	wpmc_render_brutalist_theme( $o, $end_ts );
 }
 
-function wpmc_render_maintenance_html( $o, $end_ts ) {
+function wpmc_render_brutalist_theme( $o, $end_ts ) {
 	$site_name = get_bloginfo( 'name' );
-	$gold      = esc_attr( $o['color_primary'] );
-	$turq      = esc_attr( $o['color_secondary'] );
-	$ruby      = esc_attr( $o['color_accent'] ?? '#B23A48' );
+	$primary   = esc_attr( $o['color_primary'] );
+	$secondary = esc_attr( $o['color_secondary'] );
+	$ink       = esc_attr( $o['color_accent'] ?? '#111111' );
 	$bg1       = esc_attr( $o['color_bg1'] );
 	$bg2       = esc_attr( $o['color_bg2'] );
 	$favicon   = get_site_icon_url();
@@ -633,294 +761,253 @@ function wpmc_render_maintenance_html( $o, $end_ts ) {
 <title><?php echo esc_html( $o['title'] . ' — ' . $site_name ); ?></title>
 <?php if ( $favicon ) : ?><link rel="icon" href="<?php echo esc_url( $favicon ); ?>"><?php endif; ?>
 <link rel="preconnect" href="https://fonts.bunny.net">
-<link href="https://fonts.bunny.net/css?family=vazirmatn:400,500,600,700,800,900" rel="stylesheet">
+<link href="https://fonts.bunny.net/css?family=vazirmatn:400,600,700,800,900|jetbrains-mono:500,700,800" rel="stylesheet">
 <style>
 	:root{
-		--wpmc-gold: <?php echo $gold; ?>;
-		--wpmc-turq: <?php echo $turq; ?>;
-		--wpmc-ruby: <?php echo $ruby; ?>;
+		--wpmc-primary: <?php echo $primary; ?>;
+		--wpmc-secondary: <?php echo $secondary; ?>;
+		--wpmc-ink: <?php echo $ink; ?>;
 		--wpmc-bg1: <?php echo $bg1; ?>;
 		--wpmc-bg2: <?php echo $bg2; ?>;
-		--wpmc-ivory: #F3ECDD;
+		--wpmc-paper: #FFFFFF;
 	}
 	*{ box-sizing:border-box; }
-	html,body{ margin:0; padding:0; min-height:100vh; overflow-x:hidden; }
+	html,body{ margin:0; padding:0; min-height:100vh; }
 	body{
-		position:relative;
-		display:flex; align-items:center; justify-content:center;
-		padding:28px 16px;
+		position:relative; display:flex; flex-direction:column; min-height:100vh;
 		font-family: 'Vazirmatn', Tahoma, Arial, sans-serif;
-		color: var(--wpmc-ivory);
+		color: var(--wpmc-ink);
 		background:
-			radial-gradient(circle at 18% 22%, color-mix(in srgb, var(--wpmc-gold) 22%, transparent) 0%, transparent 45%),
-			radial-gradient(circle at 82% 18%, color-mix(in srgb, var(--wpmc-turq) 26%, transparent) 0%, transparent 45%),
-			radial-gradient(circle at 70% 88%, color-mix(in srgb, var(--wpmc-ruby) 22%, transparent) 0%, transparent 50%),
-			linear-gradient(135deg, var(--wpmc-bg1), var(--wpmc-bg2) 55%, var(--wpmc-bg1));
-		background-size: 140% 140%, 140% 140%, 140% 140%, 260% 260%;
-		animation: wpmc-mesh 22s ease-in-out infinite;
+			linear-gradient(var(--wpmc-bg2) 1.5px, transparent 1.5px) 0 0 / 34px 34px,
+			linear-gradient(90deg, var(--wpmc-bg2) 1.5px, transparent 1.5px) 0 0 / 34px 34px,
+			var(--wpmc-bg1);
 	}
-	@keyframes wpmc-mesh{
-		0%{ background-position: 0% 0%, 100% 0%, 100% 100%, 0% 50%; }
-		50%{ background-position: 15% 25%, 75% 25%, 65% 75%, 100% 50%; }
-		100%{ background-position: 0% 0%, 100% 0%, 100% 100%, 0% 50%; }
+	.wpmc-mono{ font-family:'JetBrains Mono', ui-monospace, monospace; }
+
+	/* ---------- نوار راه‌راه احتیاط بالا/پایین ---------- */
+	.wpmc-tape-bar{
+		height:26px; flex-shrink:0; position:relative; overflow:hidden;
+		background:repeating-linear-gradient(-45deg, var(--wpmc-secondary) 0 20px, var(--wpmc-ink) 20px 24px);
+		border-bottom:3px solid var(--wpmc-ink);
 	}
-	.wpmc-girih{ position:fixed; inset:0; pointer-events:none; z-index:1; opacity:.06;
-		background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='90' height='90'%3E%3Cg fill='none' stroke='%23D4AF6A' stroke-width='1.2'%3E%3Cpath d='M45 4 L62 22 L45 40 L28 22 Z M45 40 L62 58 L45 76 L28 58 Z M4 45 L22 28 L40 45 L22 62 Z M50 45 L68 28 L86 45 L68 62 Z'/%3E%3Ccircle cx='45' cy='45' r='6'/%3E%3C/g%3E%3C/svg%3E");
-		background-size: 90px 90px;
-		animation: wpmc-girih-move 60s linear infinite;
+	.wpmc-tape-bar.bottom{ border-bottom:none; border-top:3px solid var(--wpmc-ink); margin-top:auto; }
+	.wpmc-tape-bar span{
+		position:absolute; top:50%; right:24px; transform:translateY(-50%);
+		background:var(--wpmc-paper); border:2px solid var(--wpmc-ink); padding:1px 12px;
+		font-size:10.5px; font-weight:800; letter-spacing:1px; white-space:nowrap;
 	}
-	@keyframes wpmc-girih-move{ from{ background-position:0 0; } to{ background-position:360px 360px; } }
-	.wpmc-blob{ position:fixed; border-radius:50%; filter: blur(80px); opacity:.28; z-index:1; pointer-events:none; }
-	.wpmc-blob.b1{ width:300px; height:300px; background:var(--wpmc-gold); top:-70px; left:-70px; animation: wpmc-float1 16s ease-in-out infinite; }
-	.wpmc-blob.b2{ width:320px; height:320px; background:var(--wpmc-turq); bottom:-90px; right:-70px; animation: wpmc-float2 18s ease-in-out infinite; }
-	.wpmc-blob.b3{ width:220px; height:220px; background:var(--wpmc-ruby); top:42%; right:6%; animation: wpmc-float1 14s ease-in-out infinite reverse; }
-	@keyframes wpmc-float1{ 0%,100%{ transform:translate(0,0); } 50%{ transform:translate(26px,34px); } }
-	@keyframes wpmc-float2{ 0%,100%{ transform:translate(0,0); } 50%{ transform:translate(-26px,-26px); } }
-	.wpmc-wrap{ position:relative; z-index:3; width:100%; max-width:700px; }
+
+	.wpmc-main{ flex:1; display:flex; align-items:center; justify-content:center; padding:36px 16px; }
+	.wpmc-wrap{ width:100%; max-width:660px; }
+
 	.wpmc-card{
-		position:relative;
-		background: rgba(255,255,255,0.06);
-		border: 1px solid rgba(212,175,106,0.28);
-		backdrop-filter: blur(22px);
-		-webkit-backdrop-filter: blur(22px);
-		border-radius: 26px;
-		padding: 48px 40px 34px;
-		text-align:center;
-		box-shadow: 0 30px 80px rgba(0,0,0,.5), inset 0 1px 0 rgba(255,255,255,.12);
-		animation: wpmc-rise 1s cubic-bezier(.2,.8,.2,1);
+		position:relative; background:var(--wpmc-paper); border:4px solid var(--wpmc-ink);
+		box-shadow:12px 12px 0 var(--wpmc-ink);
+		padding:44px 36px 30px; text-align:center;
+		animation: wpmc-rise .55s cubic-bezier(.2,.8,.2,1);
 	}
-	@keyframes wpmc-rise{ from{ opacity:0; transform: translateY(26px) scale(.97); } to{ opacity:1; transform: translateY(0) scale(1); } }
-	.wpmc-card::before, .wpmc-card::after,
-	.wpmc-corner-l::before, .wpmc-corner-l::after{
-		content:"✦"; position:absolute; color: var(--wpmc-gold); font-size:13px; opacity:.7;
-	}
-	.wpmc-card::before{ top:16px; right:18px; }
-	.wpmc-card::after{ top:16px; left:18px; }
-	.wpmc-corner-l{ position:absolute; inset:0; pointer-events:none; }
-	.wpmc-corner-l::before{ bottom:16px; right:18px; top:auto; }
-	.wpmc-corner-l::after{ bottom:16px; left:18px; top:auto; }
+	@keyframes wpmc-rise{ from{ opacity:0; transform:translate(-6px,-6px); } to{ opacity:1; transform:translate(0,0); } }
+	.wpmc-corner-bolt{ position:absolute; width:12px; height:12px; border-radius:50%; background:var(--wpmc-ink); }
+	.wpmc-corner-bolt.tl{ top:12px; right:12px; } .wpmc-corner-bolt.tr{ top:12px; left:12px; }
+	.wpmc-corner-bolt.bl{ bottom:12px; right:12px; } .wpmc-corner-bolt.br{ bottom:12px; left:12px; }
+
 	.wpmc-badge{
-		display:inline-flex; align-items:center; gap:7px;
-		background: linear-gradient(90deg, var(--wpmc-ruby), var(--wpmc-gold));
-		padding:7px 18px; border-radius:999px;
-		font-size:13px; font-weight:700; color:#1a0e05;
-		box-shadow: 0 8px 22px color-mix(in srgb, var(--wpmc-ruby) 45%, transparent);
-		margin-bottom:26px;
+		display:inline-flex; align-items:center; gap:8px;
+		background:var(--wpmc-secondary); border:2.5px solid var(--wpmc-ink);
+		padding:6px 16px; font-size:12.5px; font-weight:800; color:var(--wpmc-ink);
+		box-shadow:3px 3px 0 var(--wpmc-ink); margin-bottom:26px; transform:rotate(-1.5deg);
 	}
-	.wpmc-astrolabe{ position:relative; width:118px; height:118px; margin:0 auto 22px; }
-	.wpmc-astrolabe svg{ position:absolute; inset:0; width:100%; height:100%; overflow:visible; }
-	.wpmc-astrolabe-limb{ animation: wpmc-spin 46s linear infinite; filter: drop-shadow(0 0 10px color-mix(in srgb, var(--wpmc-gold) 45%, transparent)); }
-	.wpmc-astrolabe-arm{ transform-origin:50% 50%; animation: wpmc-spin-rev 24s linear infinite; }
-	.wpmc-astrolabe-star{ transform-origin:50% 50%; animation: wpmc-breathe 3.6s ease-in-out infinite; filter: drop-shadow(0 0 8px color-mix(in srgb, var(--wpmc-turq) 55%, transparent)); }
-	@keyframes wpmc-spin{ from{ transform: rotate(0deg); } to{ transform: rotate(360deg); } }
-	@keyframes wpmc-spin-rev{ from{ transform: rotate(0deg); } to{ transform: rotate(-360deg); } }
-	@keyframes wpmc-breathe{ 0%,100%{ transform: scale(1); opacity:1; } 50%{ transform: scale(1.06); opacity:.92; } }
-	.wpmc-title{ font-size: clamp(28px, 4.4vw, 42px); font-weight:800; margin: 0 0 12px; line-height:1.4; letter-spacing:-0.3px; }
-	.wpmc-title span{
-		background: linear-gradient(90deg, var(--wpmc-gold), var(--wpmc-turq));
-		-webkit-background-clip:text; background-clip:text; color:transparent;
+
+	/* ---------- آیکن چرخ‌دنده متحرک ---------- */
+	.wpmc-gear-wrap{ width:104px; height:104px; margin:0 auto 22px; position:relative; }
+	.wpmc-gear{ width:100%; height:100%; animation: wpmc-spin 9s linear infinite; }
+	.wpmc-gear.small{ position:absolute; width:46px; height:46px; bottom:-6px; left:-14px; animation: wpmc-spin-rev 6s linear infinite; }
+	@keyframes wpmc-spin{ from{ transform:rotate(0deg); } to{ transform:rotate(360deg); } }
+	@keyframes wpmc-spin-rev{ from{ transform:rotate(0deg); } to{ transform:rotate(-360deg); } }
+
+	.wpmc-title{ font-size:clamp(24px,4.2vw,36px); font-weight:900; margin:0 0 14px; line-height:1.5; }
+	.wpmc-title mark{
+		background:var(--wpmc-primary); color:var(--wpmc-ink); padding:2px 8px;
+		box-decoration-break:clone; -webkit-box-decoration-break:clone;
 	}
-	.wpmc-desc{ font-size:16px; line-height:2; color: rgba(243,236,221,0.8); max-width:520px; margin:0 auto 24px; font-weight:400; }
-	.wpmc-band{ width:220px; height:8px; margin:0 auto 26px; position:relative;
-		background: repeating-linear-gradient(90deg, var(--wpmc-gold) 0 2px, transparent 2px 16px);
-		opacity:.55;
-	}
-	.wpmc-band::before, .wpmc-band::after{ content:"◆"; position:absolute; top:50%; transform:translateY(-50%); color:var(--wpmc-turq); font-size:10px; }
-	.wpmc-band::before{ right:-18px; } .wpmc-band::after{ left:-18px; }
+	.wpmc-desc{ font-size:15.5px; line-height:2; color:#333; max-width:520px; margin:0 auto 26px; font-weight:500; }
+
 	.wpmc-sentence{
-		display:inline-block; max-width:100%;
-		background: linear-gradient(90deg, color-mix(in srgb, var(--wpmc-gold) 20%, transparent), color-mix(in srgb, var(--wpmc-turq) 20%, transparent));
-		border: 1px solid rgba(212,175,106,.35); border-radius: 14px; padding: 14px 22px;
-		font-size: 16px; font-weight:700; line-height:1.9; margin-bottom: 24px;
+		display:inline-block; max-width:100%; background:var(--wpmc-bg2);
+		border:2.5px solid var(--wpmc-ink); padding:12px 20px; font-size:15px; font-weight:700; line-height:1.9;
+		margin-bottom:24px; box-shadow:4px 4px 0 var(--wpmc-ink);
 	}
-	.wpmc-sentence b{ color: var(--wpmc-turq); font-size:18px; }
-	.wpmc-timer-label{ font-size:13px; color: rgba(243,236,221,.55); margin-bottom:14px; letter-spacing:.5px; }
-	.wpmc-countdown{ display:flex;flex-direction:row-reverse; gap:14px; justify-content:center; flex-wrap:wrap; margin-bottom:32px; }
+	.wpmc-sentence b{ color:var(--wpmc-ink); font-size:17px; font-family:'JetBrains Mono',monospace; }
+	.wpmc-timer-label{ font-size:12px; font-weight:800; color:#555; margin-bottom:12px; letter-spacing:1px; text-transform:uppercase; }
+
+	.wpmc-countdown{ display:flex; flex-direction:row-reverse; gap:12px; justify-content:center; flex-wrap:wrap; margin-bottom:32px; }
 	.wpmc-countdown .box{
-		position:relative;
-		background:
-			radial-gradient(circle at 9px 9px, color-mix(in srgb, var(--wpmc-gold) 65%, transparent) 2px, transparent 2.4px),
-			radial-gradient(circle at calc(100% - 9px) 9px, color-mix(in srgb, var(--wpmc-gold) 65%, transparent) 2px, transparent 2.4px),
-			linear-gradient(160deg, rgba(212,175,106,.16), rgba(212,175,106,.02));
-		border: 1px solid rgba(212,175,106,.32); border-radius:12px; padding:16px 6px 12px; min-width:82px;
-		box-shadow: 0 12px 30px rgba(0,0,0,.35), inset 0 1px 0 rgba(255,255,255,.12);
+		background:var(--wpmc-paper); border:3px solid var(--wpmc-ink); box-shadow:4px 4px 0 var(--wpmc-ink);
+		padding:14px 8px 10px; min-width:78px;
 	}
-	.wpmc-countdown .num{
-		font-size:32px; font-weight:800; display:block;
-		background: linear-gradient(180deg, var(--wpmc-ivory), var(--wpmc-gold));
-		-webkit-background-clip:text; background-clip:text; color:transparent;
-	}
-	.wpmc-countdown .num.flip{ animation: wpmc-flip .45s ease; }
-	@keyframes wpmc-flip{
-		0%{ transform: rotateX(0deg) scale(1); }
-		35%{ transform: rotateX(90deg) scale(.85); opacity:.4; }
-		36%{ transform: rotateX(-90deg) scale(.85); }
-		100%{ transform: rotateX(0deg) scale(1); opacity:1; }
-	}
-	.wpmc-countdown .label{ font-size:11.5px; color: rgba(243,236,221,.55); margin-top:6px; display:block; }
-	.wpmc-countdown .sep{ align-self:center; font-size:24px; font-weight:800; color: rgba(243,236,221,.3); }
+	.wpmc-countdown .num{ font-size:30px; font-weight:800; display:block; font-family:'JetBrains Mono',monospace; color:var(--wpmc-ink); }
+	.wpmc-countdown .num.flip{ animation: wpmc-flip .4s ease; }
+	@keyframes wpmc-flip{ 0%{ transform:scale(1); } 40%{ transform:scale(.8) rotate(-4deg); opacity:.5; } 100%{ transform:scale(1) rotate(0); opacity:1; } }
+	.wpmc-countdown .label{ font-size:10.5px; font-weight:700; color:#666; margin-top:6px; display:block; }
+	.wpmc-countdown .sep{ align-self:center; font-size:22px; font-weight:900; color:var(--wpmc-ink); opacity:.35; font-family:'JetBrains Mono',monospace; }
+
 	.wpmc-progress-wrap{ max-width:420px; margin:0 auto 30px; }
-	.wpmc-progress-top{ display:flex; justify-content:space-between; font-size:12px; color:rgba(243,236,221,.6); margin-bottom:7px; }
-	.wpmc-progress-top b{ color: var(--wpmc-ivory); }
-	.wpmc-progress{ width:100%; height:9px; border-radius:9px; background: rgba(255,255,255,0.09); overflow:hidden; position:relative; }
-	.wpmc-progress-bar{ height:100%; border-radius:9px; background: linear-gradient(90deg, var(--wpmc-gold), var(--wpmc-turq)); position:relative; overflow:hidden; }
-	.wpmc-progress-bar::after{
-		content:""; position:absolute; inset:0;
-		background: linear-gradient(90deg, transparent, rgba(255,255,255,.5), transparent);
-		width:40%; animation: wpmc-shimmer 2.2s linear infinite;
+	.wpmc-progress-top{ display:flex; justify-content:space-between; font-size:12px; font-weight:700; color:#555; margin-bottom:8px; }
+	.wpmc-progress-top b{ color:var(--wpmc-ink); font-family:'JetBrains Mono',monospace; }
+	.wpmc-progress{ width:100%; height:16px; border:2.5px solid var(--wpmc-ink); background:var(--wpmc-paper); overflow:hidden; }
+	.wpmc-progress-bar{
+		height:100%; background:repeating-linear-gradient(-45deg, var(--wpmc-primary) 0 10px, var(--wpmc-secondary) 10px 20px);
+		background-size:200% 100%; animation: wpmc-stripes 1.4s linear infinite;
 	}
-	@keyframes wpmc-shimmer{ from{ transform:translateX(-120%); } to{ transform:translateX(320%); } }
-	.wpmc-features{ display:flex; justify-content:center; gap:10px; flex-wrap:wrap; margin-bottom:26px; }
+	@keyframes wpmc-stripes{ from{ background-position:0 0; } to{ background-position:-28px 0; } }
+
+	.wpmc-features{ display:flex; justify-content:center; gap:10px; flex-wrap:wrap; margin-bottom:28px; }
 	.wpmc-feature{
-		display:flex; align-items:center; gap:7px;
-		background: rgba(255,255,255,.05); border:1px solid rgba(212,175,106,.22);
-		padding:9px 16px; border-radius:12px; font-size:13px; color:rgba(243,236,221,.82);
+		display:flex; align-items:center; gap:7px; background:var(--wpmc-paper);
+		border:2.5px solid var(--wpmc-ink); padding:8px 14px; font-size:12.5px; font-weight:700; color:var(--wpmc-ink);
+		box-shadow:3px 3px 0 var(--wpmc-ink);
 	}
-	.wpmc-feature svg{ width:16px; height:16px; flex-shrink:0; color: var(--wpmc-turq); }
+	.wpmc-feature svg{ width:16px; height:16px; flex-shrink:0; color:var(--wpmc-primary); }
 
-	/* فرم اطلاع‌رسانی ایمیلی */
 	.wpmc-subscribe{ max-width:420px; margin:0 auto 28px; }
-	.wpmc-subscribe-label{ font-size:12.5px; color:rgba(243,236,221,.55); margin-bottom:10px; }
-	.wpmc-subscribe-row{ display:flex; gap:8px; }
+	.wpmc-subscribe-label{ font-size:12.5px; font-weight:700; color:#555; margin-bottom:10px; }
+	.wpmc-subscribe-row{ display:flex; gap:0; }
 	.wpmc-subscribe-row input[type=email]{
-		flex:1; padding:12px 16px; border-radius:12px; border:1px solid rgba(212,175,106,.32);
-		background:rgba(255,255,255,.06); color:var(--wpmc-ivory); font-family:inherit; font-size:14px; outline:none;
+		flex:1; padding:12px 16px; border:2.5px solid var(--wpmc-ink); border-left:none;
+		background:var(--wpmc-paper); color:var(--wpmc-ink); font-family:inherit; font-size:14px; outline:none;
 	}
-	.wpmc-subscribe-row input[type=email]::placeholder{ color:rgba(243,236,221,.4); }
+	.wpmc-subscribe-row input[type=email]::placeholder{ color:#999; }
 	.wpmc-subscribe-row button{
-		background: linear-gradient(90deg, var(--wpmc-gold), var(--wpmc-turq)); color:#1a0e05; font-weight:800;
-		border:none; border-radius:12px; padding:0 20px; cursor:pointer; font-family:inherit; font-size:13.5px; white-space:nowrap;
+		background:var(--wpmc-ink); color:var(--wpmc-paper); font-weight:800;
+		border:2.5px solid var(--wpmc-ink); padding:0 20px; cursor:pointer; font-family:inherit; font-size:13.5px; white-space:nowrap;
 	}
-	.wpmc-subscribe-msg{ margin-top:10px; font-size:12.5px; }
-	.wpmc-subscribe-msg.ok{ color:#4ade80; }
-	.wpmc-subscribe-msg.err{ color:#fca5a5; }
+	.wpmc-subscribe-row button:hover{ background:var(--wpmc-primary); color:var(--wpmc-ink); }
+	.wpmc-subscribe-msg{ margin-top:10px; font-size:12.5px; font-weight:700; }
+	.wpmc-subscribe-msg.ok{ color:#166534; }
+	.wpmc-subscribe-msg.err{ color:#b91c1c; }
 
-	.wpmc-social{ display:flex; justify-content:center; gap:12px; margin-bottom:24px; }
+	.wpmc-social{ display:flex; justify-content:center; gap:10px; margin-bottom:22px; }
 	.wpmc-social a{
-		width:42px; height:42px; border-radius:50%;
-		display:flex; align-items:center; justify-content:center;
-		background: rgba(255,255,255,.06); border:1px solid rgba(212,175,106,.3);
-		transition: transform .25s ease, background .25s ease; color: var(--wpmc-ivory); text-decoration:none;
+		width:42px; height:42px; display:flex; align-items:center; justify-content:center;
+		background:var(--wpmc-paper); border:2.5px solid var(--wpmc-ink); color:var(--wpmc-ink); text-decoration:none;
+		box-shadow:3px 3px 0 var(--wpmc-ink); transition:transform .12s ease, box-shadow .12s ease;
 	}
-	.wpmc-social a:hover{ transform: translateY(-4px); background: linear-gradient(135deg, var(--wpmc-gold), var(--wpmc-turq)); color:#1a0e05; }
+	.wpmc-social a:hover{ transform:translate(-2px,-2px); box-shadow:5px 5px 0 var(--wpmc-ink); background:var(--wpmc-primary); }
 	.wpmc-social svg{ width:19px; height:19px; }
-	.wpmc-footer{ font-size:13px; color: rgba(243,236,221,.5); }
+	.wpmc-footer{ font-size:12.5px; font-weight:700; color:#555; }
 
-	@media (max-width: 560px){
-		.wpmc-card{ padding:38px 20px 26px; border-radius:20px; }
-		.wpmc-countdown{ gap:8px; }
-		.wpmc-countdown .box{ min-width: calc(25% - 8px); padding:12px 4px 10px; }
-		.wpmc-countdown .num{ font-size:22px; }
+	@media (max-width:560px){
+		.wpmc-card{ padding:32px 18px 22px; box-shadow:7px 7px 0 var(--wpmc-ink); }
+		.wpmc-countdown{ gap:7px; }
+		.wpmc-countdown .box{ min-width:calc(25% - 7px); padding:10px 3px 8px; }
+		.wpmc-countdown .num{ font-size:20px; }
 		.wpmc-countdown .sep{ display:none; }
-		.wpmc-title{ font-size:24px; }
+		.wpmc-title{ font-size:22px; }
 		.wpmc-desc{ font-size:14px; }
-		.wpmc-sentence{ font-size:14px; padding:12px 16px; }
-		.wpmc-features{ gap:8px; }
-		.wpmc-feature{ font-size:12px; padding:7px 12px; }
+		.wpmc-sentence{ font-size:13px; padding:10px 14px; }
+		.wpmc-features{ gap:7px; }
+		.wpmc-feature{ font-size:11.5px; padding:6px 10px; }
 		.wpmc-subscribe-row{ flex-direction:column; }
+		.wpmc-subscribe-row input[type=email]{ border-left:2.5px solid var(--wpmc-ink); border-bottom:none; }
+		.wpmc-tape-bar span{ right:10px; font-size:9px; }
 	}
 	@media (prefers-reduced-motion: reduce){
-		*{ animation-duration: .001ms !important; animation-iteration-count: 1 !important; }
+		*{ animation-duration:.001ms !important; animation-iteration-count:1 !important; }
 	}
 
 	<?php if ( ! empty( $o['custom_css'] ) ) { echo $o['custom_css']; } ?>
 </style>
 </head>
 <body>
-	<div class="wpmc-girih"></div>
-	<div class="wpmc-blob b1"></div>
-	<div class="wpmc-blob b2"></div>
-	<div class="wpmc-blob b3"></div>
+	<div class="wpmc-tape-bar top"><span><?php echo esc_html( $o['badge_text'] ? $o['badge_text'] : 'در حال تعمیر' ); ?></span></div>
 
-	<div class="wpmc-wrap">
-		<div class="wpmc-card">
-			<div class="wpmc-corner-l"></div>
+	<div class="wpmc-main">
+		<div class="wpmc-wrap">
+			<div class="wpmc-card">
+				<span class="wpmc-corner-bolt tl"></span><span class="wpmc-corner-bolt tr"></span>
+				<span class="wpmc-corner-bolt bl"></span><span class="wpmc-corner-bolt br"></span>
 
-			<?php if ( ! empty( $o['badge_text'] ) ) : ?>
-			<div class="wpmc-badge">✦ <?php echo esc_html( $o['badge_text'] ); ?></div>
-			<?php endif; ?>
-
-			<div class="wpmc-astrolabe" aria-hidden="true">
-				<svg class="wpmc-astrolabe-limb" viewBox="0 0 100 100">
-					<circle cx="50" cy="50" r="46" fill="none" stroke="var(--wpmc-gold)" stroke-width="1.1" opacity="0.5"/>
-					<?php echo wpmc_astrolabe_ticks(); ?>
-					<circle cx="50" cy="50" r="34" fill="none" stroke="var(--wpmc-turq)" stroke-width="1" stroke-dasharray="2 5" opacity="0.55"/>
-				</svg>
-				<svg class="wpmc-astrolabe-star" viewBox="0 0 100 100">
-					<defs>
-						<linearGradient id="wpmcStarGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-							<stop offset="0%" stop-color="var(--wpmc-gold)"/>
-							<stop offset="100%" stop-color="var(--wpmc-ruby)"/>
-						</linearGradient>
-					</defs>
-					<path fill="url(#wpmcStarGrad)" d="M50,34 L52.49,43.99 L61.31,38.69 L56.00,47.51 L66,50 L56.00,52.49 L61.31,61.31 L52.49,56.00 L50,66 L47.51,56.00 L38.69,61.31 L44.00,52.49 L34,50 L44.00,47.51 L38.69,38.69 L47.51,43.99 Z"/>
-				</svg>
-				<svg class="wpmc-astrolabe-arm" viewBox="0 0 100 100">
-					<line x1="50" y1="50" x2="50" y2="9" stroke="var(--wpmc-ivory)" stroke-width="1.3" opacity="0.85"/>
-					<circle cx="50" cy="9" r="2.2" fill="var(--wpmc-turq)"/>
-				</svg>
-			</div>
-
-			<h1 class="wpmc-title"><span><?php echo esc_html( $o['title'] ); ?></span></h1>
-			<p class="wpmc-desc"><?php echo nl2br( esc_html( $o['description'] ) ); ?></p>
-			<div class="wpmc-band" aria-hidden="true"></div>
-
-			<?php if ( $end_ts ) : ?>
-			<div class="wpmc-sentence" id="wpmc-sentence" data-template="<?php echo esc_attr( $o['timer_sentence'] ); ?>"><?php echo esc_html( $o['timer_sentence'] ); ?></div>
-			<div class="wpmc-timer-label"><?php echo esc_html( $o['timer_label'] ); ?></div>
-			<div class="wpmc-countdown" id="wpmc-countdown">
-				<div class="box"><span class="num" id="wpmc-d">۰۰</span><span class="label">روز</span></div>
-				<div class="sep">:</div>
-				<div class="box"><span class="num" id="wpmc-h">۰۰</span><span class="label">ساعت</span></div>
-				<div class="sep">:</div>
-				<div class="box"><span class="num" id="wpmc-m">۰۰</span><span class="label">دقیقه</span></div>
-				<div class="sep">:</div>
-				<div class="box"><span class="num" id="wpmc-s">۰۰</span><span class="label">ثانیه</span></div>
-			</div>
-			<?php endif; ?>
-
-			<div class="wpmc-progress-wrap">
-				<div class="wpmc-progress-top"><span><?php echo esc_html( $o['progress_label'] ); ?></span><b><?php echo esc_html( wpmc_to_fa_digits( $o['progress_percent'] ) ); ?>٪</b></div>
-				<div class="wpmc-progress"><div class="wpmc-progress-bar" style="width:<?php echo (int) $o['progress_percent']; ?>%;"></div></div>
-			</div>
-
-			<?php if ( $o['feature1'] || $o['feature2'] || $o['feature3'] ) : ?>
-			<div class="wpmc-features">
-				<?php if ( $o['feature1'] ) : ?><div class="wpmc-feature"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="10" width="16" height="10" rx="2"/><path d="M8 10V7a4 4 0 018 0v3"/></svg> <?php echo esc_html( $o['feature1'] ); ?></div><?php endif; ?>
-				<?php if ( $o['feature2'] ) : ?><div class="wpmc-feature"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2 3 14h7l-1 8 10-12h-7z"/></svg> <?php echo esc_html( $o['feature2'] ); ?></div><?php endif; ?>
-				<?php if ( $o['feature3'] ) : ?><div class="wpmc-feature"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 3v18M3 12h18"/></svg> <?php echo esc_html( $o['feature3'] ); ?></div><?php endif; ?>
-			</div>
-			<?php endif; ?>
-
-			<?php if ( ! empty( $o['email_capture'] ) ) : ?>
-			<div class="wpmc-subscribe">
-				<div class="wpmc-subscribe-label">📬 دوست دارید همان لحظه‌ی بازگشایی سایت با ایمیل باخبر شوید؟</div>
-				<form class="wpmc-subscribe-row" method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>">
-					<input type="hidden" name="action" value="wpmc_subscribe">
-					<input type="hidden" name="wpmc_subscribe_nonce" value="<?php echo esc_attr( $sub_nonce ); ?>">
-					<input type="email" name="wpmc_email" placeholder="ایمیل شما" required>
-					<button type="submit">اطلاع بده</button>
-				</form>
-				<?php if ( isset( $_GET['wpmc_sub'] ) && 'ok' === $_GET['wpmc_sub'] ) : ?>
-					<div class="wpmc-subscribe-msg ok">✓ ثبت شد! هنگام بازگشایی به شما خبر می‌دهیم.</div>
-				<?php elseif ( isset( $_GET['wpmc_sub'] ) && 'err' === $_GET['wpmc_sub'] ) : ?>
-					<div class="wpmc-subscribe-msg err">✕ ایمیل معتبر نبود، دوباره تلاش کنید.</div>
+				<?php if ( ! empty( $o['badge_text'] ) ) : ?>
+				<div class="wpmc-badge">🔧 <?php echo esc_html( $o['badge_text'] ); ?></div>
 				<?php endif; ?>
-			</div>
-			<?php endif; ?>
 
-			<div class="wpmc-social">
-				<a href="https://instagram.com/grootvision" target="_blank" rel="noopener" aria-label="اینستاگرام">
-					<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="5"/><circle cx="12" cy="12" r="4"/><circle cx="17.5" cy="6.5" r="1"/></svg>
-				</a>
-				<a href="https://t.me/grootvision" target="_blank" rel="noopener" aria-label="تلگرام">
-					<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 2 11 13"/><path d="M22 2 15 22l-4-9-9-4z"/></svg>
-				</a>
-			</div>
+				<div class="wpmc-gear-wrap" aria-hidden="true">
+					<svg class="wpmc-gear" viewBox="0 0 100 100">
+						<g fill="none" stroke="var(--wpmc-ink)" stroke-width="4" stroke-linejoin="round">
+							<path d="M50 8 L58 8 L60 20 L70 24 L80 16 L88 24 L80 34 L84 44 L96 46 L96 54 L84 56 L80 66 L88 76 L80 84 L70 76 L60 80 L58 92 L50 92 L42 92 L40 80 L30 76 L20 84 L12 76 L20 66 L16 56 L4 54 L4 46 L16 44 L20 34 L12 24 L20 16 L30 24 L40 20 L42 8 Z" fill="var(--wpmc-secondary)"/>
+							<circle cx="50" cy="50" r="16" fill="var(--wpmc-paper)"/>
+						</g>
+					</svg>
+					<svg class="wpmc-gear small" viewBox="0 0 100 100">
+						<g fill="none" stroke="var(--wpmc-ink)" stroke-width="5" stroke-linejoin="round">
+							<path d="M50 8 L58 8 L60 20 L70 24 L80 16 L88 24 L80 34 L84 44 L96 46 L96 54 L84 56 L80 66 L88 76 L80 84 L70 76 L60 80 L58 92 L50 92 L42 92 L40 80 L30 76 L20 84 L12 76 L20 66 L16 56 L4 54 L4 46 L16 44 L20 34 L12 24 L20 16 L30 24 L40 20 L42 8 Z" fill="var(--wpmc-primary)"/>
+							<circle cx="50" cy="50" r="16" fill="var(--wpmc-paper)"/>
+						</g>
+					</svg>
+				</div>
 
-			<div class="wpmc-footer"><?php echo esc_html( $o['footer_text'] ); ?></div>
+				<h1 class="wpmc-title"><mark><?php echo esc_html( $o['title'] ); ?></mark></h1>
+				<p class="wpmc-desc"><?php echo nl2br( esc_html( $o['description'] ) ); ?></p>
+
+				<?php if ( $end_ts ) : ?>
+				<div class="wpmc-sentence" id="wpmc-sentence" data-template="<?php echo esc_attr( $o['timer_sentence'] ); ?>"><?php echo esc_html( $o['timer_sentence'] ); ?></div>
+				<div class="wpmc-timer-label"><?php echo esc_html( $o['timer_label'] ); ?></div>
+				<div class="wpmc-countdown" id="wpmc-countdown">
+					<div class="box"><span class="num" id="wpmc-d">۰۰</span><span class="label">روز</span></div>
+					<div class="sep">:</div>
+					<div class="box"><span class="num" id="wpmc-h">۰۰</span><span class="label">ساعت</span></div>
+					<div class="sep">:</div>
+					<div class="box"><span class="num" id="wpmc-m">۰۰</span><span class="label">دقیقه</span></div>
+					<div class="sep">:</div>
+					<div class="box"><span class="num" id="wpmc-s">۰۰</span><span class="label">ثانیه</span></div>
+				</div>
+				<?php endif; ?>
+
+				<div class="wpmc-progress-wrap">
+					<div class="wpmc-progress-top"><span><?php echo esc_html( $o['progress_label'] ); ?></span><b><?php echo esc_html( wpmc_to_fa_digits( $o['progress_percent'] ) ); ?>٪</b></div>
+					<div class="wpmc-progress"><div class="wpmc-progress-bar" style="width:<?php echo (int) $o['progress_percent']; ?>%;"></div></div>
+				</div>
+
+				<?php if ( $o['feature1'] || $o['feature2'] || $o['feature3'] ) : ?>
+				<div class="wpmc-features">
+					<?php if ( $o['feature1'] ) : ?><div class="wpmc-feature"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="10" width="16" height="10" rx="2"/><path d="M8 10V7a4 4 0 018 0v3"/></svg> <?php echo esc_html( $o['feature1'] ); ?></div><?php endif; ?>
+					<?php if ( $o['feature2'] ) : ?><div class="wpmc-feature"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2 3 14h7l-1 8 10-12h-7z"/></svg> <?php echo esc_html( $o['feature2'] ); ?></div><?php endif; ?>
+					<?php if ( $o['feature3'] ) : ?><div class="wpmc-feature"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 3v18M3 12h18"/></svg> <?php echo esc_html( $o['feature3'] ); ?></div><?php endif; ?>
+				</div>
+				<?php endif; ?>
+
+				<?php if ( ! empty( $o['email_capture'] ) ) : ?>
+				<div class="wpmc-subscribe">
+					<div class="wpmc-subscribe-label">📬 دوست دارید همان لحظه‌ی بازگشایی سایت با ایمیل باخبر شوید؟</div>
+					<form class="wpmc-subscribe-row" method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>">
+						<input type="hidden" name="action" value="wpmc_subscribe">
+						<input type="hidden" name="wpmc_subscribe_nonce" value="<?php echo esc_attr( $sub_nonce ); ?>">
+						<input type="email" name="wpmc_email" placeholder="ایمیل شما" required>
+						<button type="submit">اطلاع بده</button>
+					</form>
+					<?php if ( isset( $_GET['wpmc_sub'] ) && 'ok' === $_GET['wpmc_sub'] ) : ?>
+						<div class="wpmc-subscribe-msg ok">✓ ثبت شد! هنگام بازگشایی به شما خبر می‌دهیم.</div>
+					<?php elseif ( isset( $_GET['wpmc_sub'] ) && 'err' === $_GET['wpmc_sub'] ) : ?>
+						<div class="wpmc-subscribe-msg err">✕ ایمیل معتبر نبود، دوباره تلاش کنید.</div>
+					<?php endif; ?>
+				</div>
+				<?php endif; ?>
+
+				<div class="wpmc-social">
+					<a href="https://instagram.com/grootvision" target="_blank" rel="noopener" aria-label="اینستاگرام">
+						<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="5"/><circle cx="12" cy="12" r="4"/><circle cx="17.5" cy="6.5" r="1"/></svg>
+					</a>
+					<a href="https://t.me/grootvision" target="_blank" rel="noopener" aria-label="تلگرام">
+						<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 2 11 13"/><path d="M22 2 15 22l-4-9-9-4z"/></svg>
+					</a>
+				</div>
+
+				<div class="wpmc-footer"><?php echo esc_html( $o['footer_text'] ); ?></div>
+			</div>
 		</div>
 	</div>
+
+	<div class="wpmc-tape-bar bottom"><span dir="ltr" class="wpmc-mono">GROOT VISION</span></div>
 
 	<?php if ( $end_ts ) : ?>
 	<script>
@@ -941,6 +1028,327 @@ function wpmc_render_maintenance_html( $o, $end_ts ) {
 				prev[key] = faVal;
 			}
 		}
+		var sentenceEl = document.getElementById('wpmc-sentence');
+		var template = sentenceEl ? sentenceEl.getAttribute('data-template') : '';
+		function tick(){
+			var now = Date.now();
+			var diff = Math.max(0, target - now);
+			var d = Math.floor(diff / (1000*60*60*24));
+			var h = Math.floor((diff / (1000*60*60)) % 24);
+			var m = Math.floor((diff / (1000*60)) % 60);
+			var s = Math.floor((diff / 1000) % 60);
+			setVal('wpmc-d', d, 'd');
+			setVal('wpmc-h', h, 'h');
+			setVal('wpmc-m', m, 'm');
+			setVal('wpmc-s', s, 's');
+			if( sentenceEl && template ){
+				var text = template
+					.replace('{days}', '<b>' + toFa(d) + '</b>')
+					.replace('{hours}', '<b>' + toFa(h) + '</b>')
+					.replace('{minutes}', '<b>' + toFa(m) + '</b>');
+				sentenceEl.innerHTML = text;
+			}
+			if( diff <= 0 ){ clearInterval(timer); }
+		}
+		tick();
+		var timer = setInterval(tick, 1000);
+	})();
+	</script>
+	<?php endif; ?>
+</body>
+</html>
+	<?php
+}
+
+/**
+ * تم دوم: ترمینال/فضایی — پنجره‌ی ترمینال شناور روی فضای پرستاره،
+ * فونت مونو، رنگ نئون، افکت اسکن‌لاین و مکان‌نمای چشمک‌زن.
+ */
+function wpmc_render_terminal_theme( $o, $end_ts ) {
+	$site_name = get_bloginfo( 'name' );
+	$primary   = esc_attr( $o['color_primary'] );
+	$secondary = esc_attr( $o['color_secondary'] );
+	$ink       = esc_attr( $o['color_accent'] ?? '#0A0E14' );
+	$bg1       = esc_attr( $o['color_bg1'] );
+	$bg2       = esc_attr( $o['color_bg2'] );
+	$favicon   = get_site_icon_url();
+	$sub_nonce = wp_create_nonce( 'wpmc_subscribe' );
+	$host      = wp_parse_url( home_url(), PHP_URL_HOST );
+	?>
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="<?php bloginfo( 'charset' ); ?>">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<?php if ( ! empty( $o['seo_noindex'] ) ) : ?><meta name="robots" content="noindex,nofollow"><?php endif; ?>
+<title><?php echo esc_html( $o['title'] . ' — ' . $site_name ); ?></title>
+<?php if ( $favicon ) : ?><link rel="icon" href="<?php echo esc_url( $favicon ); ?>"><?php endif; ?>
+<link rel="preconnect" href="https://fonts.bunny.net">
+<link href="https://fonts.bunny.net/css?family=vazirmatn:400,600,700,800,900|jetbrains-mono:400,500,600,700,800" rel="stylesheet">
+<style>
+	:root{
+		--wpmc-primary: <?php echo $primary; ?>;
+		--wpmc-secondary: <?php echo $secondary; ?>;
+		--wpmc-ink: <?php echo $ink; ?>;
+		--wpmc-bg1: <?php echo $bg1; ?>;
+		--wpmc-bg2: <?php echo $bg2; ?>;
+	}
+	*{ box-sizing:border-box; }
+	html,body{ margin:0; padding:0; min-height:100vh; }
+	body{
+		position:relative; display:flex; align-items:center; justify-content:center; min-height:100vh;
+		padding:28px 16px; overflow-x:hidden;
+		font-family:'JetBrains Mono', ui-monospace, monospace;
+		color: var(--wpmc-primary);
+		background:
+			radial-gradient(ellipse at 20% 15%, color-mix(in srgb, var(--wpmc-secondary) 20%, transparent) 0%, transparent 45%),
+			radial-gradient(ellipse at 82% 78%, color-mix(in srgb, var(--wpmc-primary) 16%, transparent) 0%, transparent 50%),
+			var(--wpmc-bg1);
+	}
+	.wpmc-fa{ font-family:'Vazirmatn', Tahoma, sans-serif; }
+
+	/* ---------- فضای پرستاره ---------- */
+	.wpmc-stars, .wpmc-stars::after{
+		content:""; position:fixed; inset:-50%; z-index:0; pointer-events:none;
+		background-image:
+			radial-gradient(1.6px 1.6px at 20px 30px, #fff, transparent),
+			radial-gradient(1.2px 1.2px at 90px 120px, #fff, transparent),
+			radial-gradient(1.8px 1.8px at 160px 60px, #fff, transparent),
+			radial-gradient(1.2px 1.2px at 220px 180px, #fff, transparent),
+			radial-gradient(1.5px 1.5px at 260px 40px, #fff, transparent),
+			radial-gradient(1.2px 1.2px at 320px 140px, #fff, transparent);
+		background-repeat:repeat; background-size:360px 220px;
+		opacity:.5; animation: wpmc-drift 90s linear infinite;
+	}
+	.wpmc-stars::after{ background-position:120px 90px; opacity:.3; animation-duration:130s; animation-direction:reverse; }
+	@keyframes wpmc-drift{ from{ transform:translate(0,0); } to{ transform:translate(-360px,-220px); } }
+
+	/* ---------- افکت اسکن‌لاین روی کل صفحه ---------- */
+	.wpmc-scanlines{
+		position:fixed; inset:0; z-index:5; pointer-events:none; opacity:.15;
+		background:repeating-linear-gradient(0deg, #000 0 1px, transparent 1px 3px);
+		mix-blend-mode:overlay;
+	}
+
+	.wpmc-wrap{ position:relative; z-index:3; width:100%; max-width:640px; }
+
+	/* ---------- پنجره‌ی ترمینال ---------- */
+	.wpmc-term{
+		background: color-mix(in srgb, var(--wpmc-bg2) 88%, black);
+		border:1px solid color-mix(in srgb, var(--wpmc-primary) 35%, transparent);
+		border-radius:12px; overflow:hidden;
+		box-shadow: 0 0 0 1px color-mix(in srgb, var(--wpmc-primary) 12%, transparent), 0 30px 80px rgba(0,0,0,.6), 0 0 60px color-mix(in srgb, var(--wpmc-primary) 18%, transparent);
+		animation: wpmc-boot .6s ease;
+	}
+	@keyframes wpmc-boot{ from{ opacity:0; transform:scale(.97) translateY(10px); } to{ opacity:1; transform:scale(1) translateY(0); } }
+	.wpmc-term-bar{
+		display:flex; align-items:center; gap:8px; padding:11px 14px;
+		background:color-mix(in srgb, var(--wpmc-bg2) 96%, black);
+		border-bottom:1px solid color-mix(in srgb, var(--wpmc-primary) 20%, transparent);
+	}
+	.wpmc-term-dot{ width:11px; height:11px; border-radius:50%; }
+	.wpmc-term-dot.r{ background:#ff5f56; } .wpmc-term-dot.y{ background:#ffbd2e; } .wpmc-term-dot.g{ background:#27c93f; }
+	.wpmc-term-path{ margin-inline-start:10px; font-size:11.5px; color:color-mix(in srgb, var(--wpmc-primary) 65%, transparent); direction:ltr; unicode-bidi:plaintext; }
+	.wpmc-term-body{ padding:34px 30px 28px; text-align:center; }
+
+	.wpmc-prompt{ font-size:12px; color:color-mix(in srgb, var(--wpmc-primary) 60%, transparent); margin-bottom:18px; text-align:right; direction:ltr; unicode-bidi:plaintext; }
+	.wpmc-prompt b{ color:var(--wpmc-secondary); }
+
+	.wpmc-badge{
+		display:inline-flex; align-items:center; gap:8px;
+		border:1px solid var(--wpmc-primary); color:var(--wpmc-primary);
+		padding:5px 14px; border-radius:20px; font-size:11.5px; font-weight:700; letter-spacing:.5px;
+		text-shadow:0 0 8px color-mix(in srgb, var(--wpmc-primary) 70%, transparent);
+		box-shadow: inset 0 0 12px color-mix(in srgb, var(--wpmc-primary) 15%, transparent);
+		margin-bottom:24px;
+	}
+	.wpmc-badge .dot{ width:7px; height:7px; border-radius:50%; background:var(--wpmc-primary); box-shadow:0 0 8px var(--wpmc-primary); animation: wpmc-blink 1.4s ease infinite; }
+	@keyframes wpmc-blink{ 0%,100%{ opacity:1; } 50%{ opacity:.25; } }
+
+	.wpmc-title{
+		font-size:clamp(22px,4vw,32px); font-weight:800; margin:0 0 14px; line-height:1.6;
+		color:#fff; text-shadow:0 0 18px color-mix(in srgb, var(--wpmc-primary) 60%, transparent);
+	}
+	.wpmc-title .cursor{ display:inline-block; width:.5em; background:var(--wpmc-secondary); box-shadow:0 0 10px var(--wpmc-secondary); animation:wpmc-blink 1s steps(1) infinite; margin-inline-start:4px; }
+	.wpmc-desc{ font-size:14.5px; line-height:2.1; color:color-mix(in srgb, var(--wpmc-primary) 75%, white 15%); max-width:480px; margin:0 auto 26px; }
+
+	.wpmc-sentence{
+		display:inline-block; max-width:100%;
+		border:1px dashed color-mix(in srgb, var(--wpmc-secondary) 55%, transparent);
+		background:color-mix(in srgb, var(--wpmc-secondary) 6%, transparent);
+		border-radius:8px; padding:12px 20px; font-size:13.5px; line-height:2; margin-bottom:22px; color:color-mix(in srgb, var(--wpmc-primary) 85%, white 10%);
+	}
+	.wpmc-sentence b{ color:var(--wpmc-secondary); font-weight:800; text-shadow:0 0 10px color-mix(in srgb, var(--wpmc-secondary) 65%, transparent); }
+	.wpmc-timer-label{ font-size:10.5px; color:color-mix(in srgb, var(--wpmc-primary) 55%, transparent); margin-bottom:12px; letter-spacing:2px; text-transform:uppercase; }
+
+	.wpmc-countdown{ display:flex; flex-direction:row-reverse; gap:10px; justify-content:center; flex-wrap:wrap; margin-bottom:30px; }
+	.wpmc-countdown .box{
+		border:1px solid color-mix(in srgb, var(--wpmc-primary) 40%, transparent); border-radius:8px;
+		background:color-mix(in srgb, var(--wpmc-primary) 6%, transparent);
+		padding:14px 6px 10px; min-width:70px;
+		box-shadow: inset 0 0 14px color-mix(in srgb, var(--wpmc-primary) 12%, transparent);
+	}
+	.wpmc-countdown .num{ font-size:26px; font-weight:800; display:block; color:#fff; text-shadow:0 0 14px color-mix(in srgb, var(--wpmc-primary) 75%, transparent); }
+	.wpmc-countdown .num.flip{ animation: wpmc-glitch .35s ease; }
+	@keyframes wpmc-glitch{ 0%{ opacity:1; } 30%{ opacity:.3; transform:translateX(2px); text-shadow:2px 0 var(--wpmc-secondary),-2px 0 var(--wpmc-primary); } 100%{ opacity:1; transform:translateX(0); } }
+	.wpmc-countdown .label{ font-size:9.5px; color:color-mix(in srgb, var(--wpmc-primary) 55%, transparent); margin-top:6px; display:block; letter-spacing:1px; }
+	.wpmc-countdown .sep{ align-self:center; font-size:20px; color:var(--wpmc-primary); opacity:.4; }
+
+	.wpmc-progress-wrap{ max-width:420px; margin:0 auto 30px; text-align:right; direction:ltr; }
+	.wpmc-progress-top{ display:flex; justify-content:space-between; font-size:11px; color:color-mix(in srgb, var(--wpmc-primary) 60%, transparent); margin-bottom:8px; }
+	.wpmc-progress-top b{ color:var(--wpmc-secondary); }
+	.wpmc-progress{ width:100%; height:6px; border-radius:6px; background:color-mix(in srgb, var(--wpmc-primary) 12%, transparent); overflow:hidden; }
+	.wpmc-progress-bar{ height:100%; border-radius:6px; background:linear-gradient(90deg, var(--wpmc-primary), var(--wpmc-secondary)); box-shadow:0 0 12px color-mix(in srgb, var(--wpmc-primary) 70%, transparent); position:relative; overflow:hidden; }
+	.wpmc-progress-bar::after{ content:""; position:absolute; inset:0; background:linear-gradient(90deg,transparent,rgba(255,255,255,.6),transparent); width:35%; animation:wpmc-shimmer 2s linear infinite; }
+	@keyframes wpmc-shimmer{ from{ transform:translateX(-140%); } to{ transform:translateX(340%); } }
+
+	.wpmc-features{ display:flex; justify-content:center; gap:9px; flex-wrap:wrap; margin-bottom:26px; direction:ltr; }
+	.wpmc-feature{
+		display:flex; align-items:center; gap:7px;
+		border:1px solid color-mix(in srgb, var(--wpmc-primary) 30%, transparent); border-radius:6px;
+		padding:8px 13px; font-size:11.5px; color:color-mix(in srgb, var(--wpmc-primary) 85%, white 10%);
+		background:color-mix(in srgb, var(--wpmc-primary) 5%, transparent);
+	}
+	.wpmc-feature::before{ content:"›"; color:var(--wpmc-secondary); font-weight:800; }
+
+	.wpmc-subscribe{ max-width:420px; margin:0 auto 26px; direction:ltr; text-align:left; }
+	.wpmc-subscribe-label{ font-size:11px; color:color-mix(in srgb, var(--wpmc-primary) 55%, transparent); margin-bottom:9px; unicode-bidi:plaintext; }
+	.wpmc-subscribe-row{ display:flex; gap:0; border:1px solid color-mix(in srgb, var(--wpmc-primary) 45%, transparent); border-radius:6px; overflow:hidden; }
+	.wpmc-subscribe-row input[type=email]{
+		flex:1; padding:11px 14px; border:none; background:transparent; color:#fff; font-family:inherit; font-size:12.5px; outline:none;
+	}
+	.wpmc-subscribe-row input[type=email]::placeholder{ color:color-mix(in srgb, var(--wpmc-primary) 40%, transparent); }
+	.wpmc-subscribe-row button{
+		background:var(--wpmc-primary); color:var(--wpmc-bg1); font-weight:800; border:none; padding:0 18px; cursor:pointer; font-family:inherit; font-size:12px;
+	}
+	.wpmc-subscribe-row button:hover{ background:var(--wpmc-secondary); }
+	.wpmc-subscribe-msg{ margin-top:9px; font-size:11.5px; unicode-bidi:plaintext; }
+	.wpmc-subscribe-msg.ok{ color:#4ade80; } .wpmc-subscribe-msg.err{ color:#fca5a5; }
+
+	.wpmc-social{ display:flex; justify-content:center; gap:10px; margin-bottom:20px; }
+	.wpmc-social a{
+		width:38px; height:38px; display:flex; align-items:center; justify-content:center; border-radius:6px;
+		border:1px solid color-mix(in srgb, var(--wpmc-primary) 35%, transparent); color:var(--wpmc-primary); text-decoration:none;
+		transition:all .2s ease;
+	}
+	.wpmc-social a:hover{ background:var(--wpmc-primary); color:var(--wpmc-bg1); box-shadow:0 0 16px color-mix(in srgb, var(--wpmc-primary) 60%, transparent); }
+	.wpmc-social svg{ width:17px; height:17px; }
+
+	.wpmc-footer{ font-size:11px; color:color-mix(in srgb, var(--wpmc-primary) 50%, transparent); direction:ltr; unicode-bidi:plaintext; }
+	.wpmc-footer .cursor{ display:inline-block; width:.55em; background:var(--wpmc-primary); animation:wpmc-blink 1s steps(1) infinite; margin-inline-start:3px; vertical-align:-2px; height:1em; }
+
+	@media (max-width:560px){
+		.wpmc-term-body{ padding:26px 18px 22px; }
+		.wpmc-countdown{ gap:6px; }
+		.wpmc-countdown .box{ min-width:calc(25% - 6px); padding:10px 3px 8px; }
+		.wpmc-countdown .num{ font-size:19px; }
+		.wpmc-countdown .sep{ display:none; }
+		.wpmc-title{ font-size:19px; }
+		.wpmc-desc{ font-size:13px; }
+		.wpmc-subscribe-row{ flex-direction:column; }
+	}
+	@media (prefers-reduced-motion: reduce){ *{ animation-duration:.001ms !important; animation-iteration-count:1 !important; } }
+
+	<?php if ( ! empty( $o['custom_css'] ) ) { echo $o['custom_css']; } ?>
+</style>
+</head>
+<body>
+	<div class="wpmc-stars" aria-hidden="true"></div>
+	<div class="wpmc-scanlines" aria-hidden="true"></div>
+
+	<div class="wpmc-wrap">
+		<div class="wpmc-term">
+			<div class="wpmc-term-bar">
+				<span class="wpmc-term-dot r"></span><span class="wpmc-term-dot y"></span><span class="wpmc-term-dot g"></span>
+				<span class="wpmc-term-path">visitor@<?php echo esc_html( $host ); ?>: ~/status</span>
+			</div>
+			<div class="wpmc-term-body">
+				<div class="wpmc-prompt"><?php echo esc_html( $host ); ?>/status <b>--watch</b></div>
+
+				<?php if ( ! empty( $o['badge_text'] ) ) : ?>
+				<div class="wpmc-badge"><span class="dot"></span> <?php echo esc_html( strtoupper( $o['badge_text'] ) ); ?></div>
+				<?php endif; ?>
+
+				<h1 class="wpmc-title wpmc-fa"><?php echo esc_html( $o['title'] ); ?><span class="cursor">&nbsp;</span></h1>
+				<p class="wpmc-desc wpmc-fa"><?php echo nl2br( esc_html( $o['description'] ) ); ?></p>
+
+				<?php if ( $end_ts ) : ?>
+				<div class="wpmc-sentence wpmc-fa" id="wpmc-sentence" data-template="<?php echo esc_attr( $o['timer_sentence'] ); ?>"><?php echo esc_html( $o['timer_sentence'] ); ?></div>
+				<div class="wpmc-timer-label wpmc-fa"><?php echo esc_html( $o['timer_label'] ); ?></div>
+				<div class="wpmc-countdown" id="wpmc-countdown">
+					<div class="box"><span class="num" id="wpmc-d">00</span><span class="label">DAY</span></div>
+					<div class="sep">:</div>
+					<div class="box"><span class="num" id="wpmc-h">00</span><span class="label">HR</span></div>
+					<div class="sep">:</div>
+					<div class="box"><span class="num" id="wpmc-m">00</span><span class="label">MIN</span></div>
+					<div class="sep">:</div>
+					<div class="box"><span class="num" id="wpmc-s">00</span><span class="label">SEC</span></div>
+				</div>
+				<?php endif; ?>
+
+				<div class="wpmc-progress-wrap">
+					<div class="wpmc-progress-top wpmc-fa"><span><?php echo esc_html( $o['progress_label'] ); ?></span><b><?php echo (int) $o['progress_percent']; ?>%</b></div>
+					<div class="wpmc-progress"><div class="wpmc-progress-bar" style="width:<?php echo (int) $o['progress_percent']; ?>%;"></div></div>
+				</div>
+
+				<?php if ( $o['feature1'] || $o['feature2'] || $o['feature3'] ) : ?>
+				<div class="wpmc-features wpmc-fa">
+					<?php if ( $o['feature1'] ) : ?><div class="wpmc-feature"><?php echo esc_html( $o['feature1'] ); ?></div><?php endif; ?>
+					<?php if ( $o['feature2'] ) : ?><div class="wpmc-feature"><?php echo esc_html( $o['feature2'] ); ?></div><?php endif; ?>
+					<?php if ( $o['feature3'] ) : ?><div class="wpmc-feature"><?php echo esc_html( $o['feature3'] ); ?></div><?php endif; ?>
+				</div>
+				<?php endif; ?>
+
+				<?php if ( ! empty( $o['email_capture'] ) ) : ?>
+				<div class="wpmc-subscribe">
+					<div class="wpmc-subscribe-label"># notify --email-me-on-relaunch</div>
+					<form class="wpmc-subscribe-row" method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>">
+						<input type="hidden" name="action" value="wpmc_subscribe">
+						<input type="hidden" name="wpmc_subscribe_nonce" value="<?php echo esc_attr( $sub_nonce ); ?>">
+						<input type="email" name="wpmc_email" placeholder="you@email.com" required>
+						<button type="submit">notify_me()</button>
+					</form>
+					<?php if ( isset( $_GET['wpmc_sub'] ) && 'ok' === $_GET['wpmc_sub'] ) : ?>
+						<div class="wpmc-subscribe-msg ok">// saved — we'll ping you at relaunch.</div>
+					<?php elseif ( isset( $_GET['wpmc_sub'] ) && 'err' === $_GET['wpmc_sub'] ) : ?>
+						<div class="wpmc-subscribe-msg err">// error: invalid email, try again.</div>
+					<?php endif; ?>
+				</div>
+				<?php endif; ?>
+
+				<div class="wpmc-social">
+					<a href="https://instagram.com/grootvision" target="_blank" rel="noopener" aria-label="اینستاگرام">
+						<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="5"/><circle cx="12" cy="12" r="4"/><circle cx="17.5" cy="6.5" r="1"/></svg>
+					</a>
+					<a href="https://t.me/grootvision" target="_blank" rel="noopener" aria-label="تلگرام">
+						<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 2 11 13"/><path d="M22 2 15 22l-4-9-9-4z"/></svg>
+					</a>
+				</div>
+
+				<div class="wpmc-footer">&gt; <?php echo esc_html( $o['footer_text'] ); ?><span class="cursor"></span></div>
+			</div>
+		</div>
+	</div>
+
+	<?php if ( $end_ts ) : ?>
+	<script>
+	(function(){
+		var target = <?php echo (int) $end_ts * 1000; ?>;
+		function pad(num){ return String(num).padStart(2,'0'); }
+		var prev = { d:null, h:null, m:null, s:null };
+		function setVal(id, val, key){
+			var el = document.getElementById(id);
+			var v = pad(val);
+			if(prev[key] !== v){
+				el.textContent = v;
+				el.classList.remove('flip');
+				void el.offsetWidth;
+				el.classList.add('flip');
+				prev[key] = v;
+			}
+		}
+		var fa = ['۰','۱','۲','۳','۴','۵','۶','۷','۸','۹'];
+		function toFa(num){ return String(num).replace(/[0-9]/g, function(d){ return fa[d]; }); }
 		var sentenceEl = document.getElementById('wpmc-sentence');
 		var template = sentenceEl ? sentenceEl.getAttribute('data-template') : '';
 		function tick(){
