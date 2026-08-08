@@ -736,16 +736,17 @@ function gv_sr_get_growth( $report_id ) {
    ========================================================================== */
 
 /** پیدا کردن یا ساختن گزارشِ «باز» (پیش‌نویس) ماه جاری برای یک مشتری/پروژه */
-function gv_sr_get_or_create_open_report( $project ) {
+function gv_sr_get_or_create_open_report( $project, $period_jy = 0, $period_jm = 0 ) {
 	global $wpdb;
 	$t = $wpdb->prefix . 'gv_sr_reports';
 
-	list( $period_start, $period_end ) = gv_sr_current_jalali_month_bounds();
+	if ( $period_jy > 0 && $period_jm > 0 ) {
+		list( $period_start, $period_end ) = gv_sr_jalali_month_bounds( $period_jy, $period_jm );
+	} else {
+		list( $period_start, $period_end ) = gv_sr_current_jalali_month_bounds();
+		list( $period_jy, $period_jm ) = gv_sr_g2j( (int) date( 'Y' ), (int) date( 'n' ), (int) date( 'j' ) );
+	}
 
-	/* عمداً وضعیت (draft/published) در این جست‌وجو شرط نیست: قبلاً فقط
-	   پیش‌نویس‌ها پیدا می‌شدند، پس به‌محض «انتشار» یک گزارش، ثبتِ سریعِ بعدیِ
-	   همان پروژه در همان ماه، آن را دیگر پیدا نمی‌کرد و یک گزارش کاملاً
-	   جدید (تکراری) برایش می‌ساخت. */
 	$existing = $wpdb->get_row( $wpdb->prepare( // phpcs:ignore
 		"SELECT * FROM {$t} WHERE project_id = %d AND period_start = %s AND period_end = %s LIMIT 1",
 		(int) $project->id, $period_start, $period_end
@@ -753,13 +754,12 @@ function gv_sr_get_or_create_open_report( $project ) {
 	if ( $existing ) { return $existing; }
 
 	$now = current_time( 'mysql' );
-	list( $jy, $jm ) = gv_sr_g2j( (int) date( 'Y' ), (int) date( 'n' ), (int) date( 'j' ) );
 
 	$wpdb->insert( $t, array( // phpcs:ignore
 		'client_name'    => $project->client_name,
 		'user_id'        => (int) $project->user_id,
 		'project_id'     => (int) $project->id,
-		'title'          => 'گزارش ' . gv_sr_month_name( $jm ) . ' ' . gv_sr_fa_digits( $jy ) . ' — ' . $project->client_name,
+		'title'          => 'گزارش ' . gv_sr_month_name( $period_jm ) . ' ' . gv_sr_fa_digits( $period_jy ) . ' — ' . $project->client_name,
 		'period_start'   => $period_start,
 		'period_end'     => $period_end,
 		'summary'        => '',
@@ -792,7 +792,7 @@ function gv_sr_get_or_create_open_report( $project ) {
  * برای ثبتِ کاملاً تازه (بدون ویرایش)، همچنان گزارشِ بازِ ماه جاری پیدا یا
  * ساخته می‌شود.
  */
-function gv_sr_resolve_target_report( $project, $timelog_id = 0 ) {
+function gv_sr_resolve_target_report( $project, $timelog_id = 0, $period_jy = 0, $period_jm = 0 ) {
 	if ( ! $project ) { return null; }
 
 	if ( $timelog_id > 0 ) {
@@ -803,7 +803,7 @@ function gv_sr_resolve_target_report( $project, $timelog_id = 0 ) {
 		}
 	}
 
-	return gv_sr_get_or_create_open_report( $project );
+	return gv_sr_get_or_create_open_report( $project, $period_jy, $period_jm );
 }
 
 /** بازمحاسبه‌ی مجموع ساعت یک گزارش، بر اساس ریز فعالیت‌های آن */
@@ -884,7 +884,15 @@ function gv_sr_quick_log_work_multi( $data, $activities, $timelog_id = 0 ) {
 		/* از تابع مرکزی «تعیین گزارش هدف» استفاده می‌شود: اگر این یک ویرایش
 		   است، همان گزارشِ قبلیِ همین ردیف کارکرد برداشته می‌شود، نه یک
 		   جست‌وجوی تازه که ممکن است گزارش دیگری برگرداند. */
-		$report    = gv_sr_resolve_target_report( $project, $timelog_id );
+		$period_jy = isset( $data['period_jy'] ) ? (int) $data['period_jy'] : 0;
+$period_jm = isset( $data['period_jm'] ) ? (int) $data['period_jm'] : 0;
+if ( ( $period_jy <= 0 || $period_jm <= 0 ) && ! empty( $data['work_date'] ) ) {
+	$wd = explode( '-', $data['work_date'] );
+	if ( count( $wd ) === 3 ) {
+		list( $period_jy, $period_jm ) = gv_sr_g2j( (int) $wd[0], (int) $wd[1], (int) $wd[2] );
+	}
+}
+$report    = gv_sr_resolve_target_report( $project, $timelog_id, $period_jy, $period_jm );
 		$report_id = $report ? (int) $report->id : 0;
 
 		/* اگر در حال ویرایش هستیم، فعالیت‌های قبلی همین ردیف کارکرد را حذف کن
@@ -1848,13 +1856,15 @@ function gv_sr_handle_save_timelog() {
 	}
 
 	$data = array(
-		'employee_id' => $employee_id,
-		'work_date'   => gv_sr_read_jalali_post( 'log_date' ),
-		'entry_mode'  => $entry_mode,
-		'start_time'  => $start_time,
-		'end_time'    => $end_time,
-		'hours'       => $hours,
-		'project_id'  => isset( $_POST['project_id'] ) ? (int) $_POST['project_id'] : 0,
+'employee_id' => $employee_id,
+	'work_date'   => gv_sr_read_jalali_post( 'log_date' ),
+	'entry_mode'  => $entry_mode,
+	'start_time'  => $start_time,
+	'end_time'    => $end_time,
+	'hours'       => $hours,
+	'project_id'  => isset( $_POST['project_id'] ) ? (int) $_POST['project_id'] : 0,
+	'period_jy'   => isset( $_POST['report_period_jy'] ) ? (int) $_POST['report_period_jy'] : 0,
+	'period_jm'   => isset( $_POST['report_period_jm'] ) ? (int) $_POST['report_period_jm'] : 0,
 	);
 
 	if ( empty( $data['project_id'] ) ) {
@@ -2552,7 +2562,7 @@ function gv_sr_render_admin_list() {
 						<td class="gvsr-row-actions">
 							<a href="<?php echo esc_url( admin_url( 'admin.php?page=' . GV_SR_PAGE_SLUG . '&tab=view&id=' . $r->id ) ); ?>">مشاهده</a>
 							<?php if ( $r->project_id > 0 ) : ?>
-								<a href="<?php echo esc_url( admin_url( 'admin.php?page=' . GV_SR_PAGE_SLUG . '&tab=quickreport&project_id=' . $r->project_id ) ); ?>">ویرایش / انتشار</a>
+								<a href="<?php echo esc_url( admin_url( 'admin.php?page=' . GV_SR_PAGE_SLUG . '&tab=quickreport&report_id=' . $r->id ) ); ?>">ویرایش / انتشار</a>
 							<?php endif; ?>
 							<a class="gvsr-danger" onclick="return confirm('این گزارش برای همیشه حذف می‌شود. ادامه می‌دهید؟');" href="<?php echo esc_url( wp_nonce_url( admin_url( 'admin-post.php?action=gv_sr_delete_report&id=' . $r->id ), GV_SR_NONCE ) ); ?>">حذف</a>
 						</td>
@@ -2670,13 +2680,6 @@ function gv_sr_render_quick_report_tab() {
 	}
 
 	$my_projects = gv_sr_get_employee_projects( $emp->id );
-	if ( empty( $my_projects ) ) {
-		echo '<div class="gvsr-report-card" style="max-width:640px;">';
-		echo '<h3>👋 هنوز به هیچ پروژه‌ای اضافه نشده‌اید</h3>';
-		echo '<p class="gvsr-hint-inline">برای ثبت گزارش، باید ابتدا یک مدیر شما را از تب «🗂️ پروژه‌ها» به‌عنوان عضو یکی از پروژه‌ها اضافه کند.</p>';
-		echo '</div>';
-		return;
-	}
 
 	$editing        = null;
 	$editing_tasks  = array();
@@ -2690,6 +2693,28 @@ function gv_sr_render_quick_report_tab() {
 				(int) $editing->id
 			) );
 		}
+	}
+
+	/* اگر از لیست «گزارش‌های مشتری» با report_id به این‌جا آمده‌ایم، همان
+	   گزارش دقیق را پیدا کن تا فرم روی همان گزارش (نه گزارش ماه جاری) باز شود. */
+	$editing_report = null;
+	if ( ! $editing && isset( $_GET['report_id'] ) ) {
+		$maybe_report = gv_sr_get_report( (int) $_GET['report_id'] );
+		if ( $maybe_report && (int) $maybe_report->project_id > 0 ) {
+			$editing_report = $maybe_report;
+			$rp = gv_sr_get_project( (int) $maybe_report->project_id );
+			if ( $rp && ! in_array( (int) $rp->id, wp_list_pluck( $my_projects, 'id' ), true ) ) {
+				$my_projects[] = $rp;
+			}
+		}
+	}
+
+	if ( empty( $my_projects ) ) {
+		echo '<div class="gvsr-report-card" style="max-width:640px;">';
+		echo '<h3>👋 هنوز به هیچ پروژه‌ای اضافه نشده‌اید</h3>';
+		echo '<p class="gvsr-hint-inline">برای ثبت گزارش، باید ابتدا یک مدیر شما را از تب «🗂️ پروژه‌ها» به‌عنوان عضو یکی از پروژه‌ها اضافه کند.</p>';
+		echo '</div>';
+		return;
 	}
 
 	/* توجه: پیام «گزارش ثبت شد» فقط یک‌بار — در gv_sr_render_admin_page —
@@ -2722,6 +2747,8 @@ function gv_sr_render_quick_report_tab() {
 
 	if ( $editing ) {
 		$selected_project_id = (int) $editing->project_id;
+	} elseif ( $editing_report ) {
+		$selected_project_id = (int) $editing_report->project_id;
 	} elseif ( isset( $_GET['project_id'] ) ) {
 		/* اجازه می‌دهد لینک «ویرایش / انتشار» از لیست گزارش‌ها، مستقیماً همین پروژه را
 		   در فرم انتخاب کند — تا دیگر نیازی به صفحه‌ی جدای «ویرایش کامل» نباشد. */
@@ -2746,6 +2773,9 @@ function gv_sr_render_quick_report_tab() {
 		$peek_project = $peek_report && (int) $peek_report->project_id > 0
 			? gv_sr_get_project( (int) $peek_report->project_id )
 			: ( $selected_project_id ? gv_sr_get_project( $selected_project_id ) : null );
+	} elseif ( $editing_report ) {
+		$peek_report  = $editing_report;
+		$peek_project = gv_sr_get_project( (int) $editing_report->project_id );
 	} else {
 		$peek_project = $selected_project_id ? gv_sr_get_project( $selected_project_id ) : null;
 		$peek_report  = $peek_project ? gv_sr_peek_open_report( $peek_project ) : null;
@@ -2848,6 +2878,33 @@ function gv_sr_render_quick_report_tab() {
 								<span class="gvsr-ql-label" style="margin:0;">تاریخ:</span>
 								<?php echo gv_sr_jalali_select_fields( 'log_date', $editing ? $editing->work_date : '', true ); ?>
 								<span class="gvsr-ql-today-badge">پیش‌فرض: امروز — در صورت نیاز عوض کنید</span>
+							</div>
+
+							<div class="gvsr-ql-date-row" style="margin-top:10px;">
+								<span class="gvsr-ql-label" style="margin:0;">این فعالیت در گزارشِ کدام ماه ثبت شود؟</span>
+								<?php
+								$rp_jy = 0; $rp_jm = 0;
+								if ( $peek_report ) {
+									$pp = explode( '-', (string) $peek_report->period_end );
+									if ( count( $pp ) === 3 ) { list( $rp_jy, $rp_jm ) = gv_sr_g2j( (int) $pp[0], (int) $pp[1], (int) $pp[2] ); }
+								}
+								if ( ! $rp_jy ) { $rp_jy = gv_sr_today_jalali_year(); }
+								if ( ! $rp_jm ) { $rp_jm = 1; }
+								$cur_jy = gv_sr_today_jalali_year();
+								?>
+								<span class="gvsr-jdate-group gvsr-jdate-compact">
+									<select name="report_period_jm">
+										<?php for ( $m = 1; $m <= 12; $m++ ) : ?>
+											<option value="<?php echo esc_attr( $m ); ?>" <?php selected( $rp_jm, $m ); ?>><?php echo esc_html( gv_sr_month_name( $m ) ); ?></option>
+										<?php endfor; ?>
+									</select>
+									<select name="report_period_jy">
+										<?php for ( $y = $cur_jy - 4; $y <= $cur_jy + 1; $y++ ) : ?>
+											<option value="<?php echo esc_attr( $y ); ?>" <?php selected( $rp_jy, $y ); ?>><?php echo esc_html( gv_sr_fa_digits( $y ) ); ?></option>
+										<?php endfor; ?>
+									</select>
+								</span>
+								<span class="gvsr-ql-today-badge">پیش‌فرض بر اساس تاریخ فعالیت — برای ثبت دیرهنگام (ماه گذشته) تغییرش دهید</span>
 							</div>
 						</div>
 					</div>
