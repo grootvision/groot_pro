@@ -697,6 +697,7 @@ function gv_tbl_render_admin_page() {
    ========================================================================== */
 
 add_action( 'wp_head', 'gv_tbl_output_css', 50 );
+add_action( 'wp_head', 'gv_tbl_output_css', 50 );
 function gv_tbl_output_css() {
 	$s = gv_tbl_get_settings();
 	if ( empty( $s['enabled'] ) ) { return; }
@@ -704,21 +705,38 @@ function gv_tbl_output_css() {
 	$c = gv_tbl_get_active_palette( $s );
 
 	/*
-	 * مهم: این استایل فقط باید روی جدول‌های داخل محتوای مقالات، برگه‌ها و
-	 * ووکامرس (وبلاگ) اعمال شود — نه روی جدول‌های فرم تسویه‌حساب/سبد خرید
-	 * که مبلغ و قیمت نمایش می‌دهند. برای همین:
-	 * ۱) فقط جدول‌های داخل .entry-content / .post-content / .wp-block-table را هدف می‌گیریم.
-	 * ۲) با body:not(.woocommerce-checkout):not(.woocommerce-cart) کل صفحات
-	 *    تسویه‌حساب و سبد خرید ووکامرس را به‌طور کامل مستثنی می‌کنیم، حتی اگر
-	 *    آن صفحه یک جدول محتوایی دیگر هم داشته باشد.
+	 * روش جدید: به‌جای اینکه فقط جدول‌های داخل چند کلاس خاص (wp-block-table،
+	 * entry-content و ...) را هدف بگیریم — که با قالب‌ها و صفحه‌سازهای
+	 * مختلف (المنتور، ادیتور کلاسیک، قالب‌های فارسی و ...) می‌شکند چون
+	 * جدول ممکن است داخل هیچ‌کدام از آن wrapperها نباشد — همه‌ی جدول‌های
+	 * سایت را هدف می‌گیریم و فقط جدول‌های مربوط به ووکامرس (سبد خرید،
+	 * تسویه‌حساب، خلاصه سفارش، تاریخچه سفارش‌ها و جزئیات سفارش) را
+	 * صراحتاً استثنا می‌کنیم. این کار مستقل از قالب/صفحه‌ساز کار می‌کند.
 	 */
+
+	// ۱) کل صفحات تسویه‌حساب و سبد خرید ووکامرس به‌طور کامل مستثنی می‌شوند
+	//    (حتی اگر یک جدول محتوایی دیگر هم در همان صفحه باشد).
 	$scope = 'body:not(.woocommerce-checkout):not(.woocommerce-cart)';
 
-	$selectors_wrap  = "{$scope} .entry-content table, {$scope} .post-content table, {$scope} .wp-block-table table, {$scope} article.post table, {$scope} article.page table";
-	$selectors_th    = "{$scope} .entry-content table th, {$scope} .post-content table th, {$scope} .wp-block-table table th, {$scope} article.post table th, {$scope} article.page table th";
-	$selectors_td    = "{$scope} .entry-content table td, {$scope} .post-content table td, {$scope} .wp-block-table table td, {$scope} article.post table td, {$scope} article.page table td";
-	$selectors_tr_even = "{$scope} .entry-content table tbody tr:nth-child(even), {$scope} .post-content table tbody tr:nth-child(even), {$scope} .wp-block-table table tbody tr:nth-child(even)";
-	$selectors_tr_hover = "{$scope} .entry-content table tbody tr:hover, {$scope} .post-content table tbody tr:hover, {$scope} .wp-block-table table tbody tr:hover";
+	// ۲) جدول‌هایی که با این کلاس‌ها مشخص می‌شوند (چه در صفحات دیگر مثل
+	//    my-account یا صفحه‌ی «سفارش من دریافت شد» ظاهر شوند) همیشه استثنا
+	//    هستند، چون مبلغ/قیمت و اطلاعات سفارش نمایش می‌دهند.
+	$wc_exclude = ':not(.shop_table)'
+		. ':not(.cart_totals)'
+		. ':not(.woocommerce-checkout-review-order-table)'
+		. ':not(.woocommerce-table)'
+		. ':not(.woocommerce-orders-table)'
+		. ':not(.order_details)'
+		. ':not(.variations)'
+		. ':not(.wc-bacs-bank-details)';
+
+	$table_selector = "{$scope} table{$wc_exclude}";
+
+	$selectors_wrap     = $table_selector;
+	$selectors_th       = "{$table_selector} th";
+	$selectors_td       = "{$table_selector} td";
+	$selectors_tr_even  = "{$table_selector} tbody tr:nth-child(even)";
+	$selectors_tr_hover = "{$table_selector} tbody tr:hover";
 	?>
 	<style id="gv-table-style-css">
 		<?php echo esc_html( $selectors_wrap ); ?> {
