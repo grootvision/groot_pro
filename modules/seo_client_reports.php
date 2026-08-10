@@ -18,6 +18,7 @@ define( 'GV_SR_TEAM_COOKIE','gv_sr_team_token' );
 define( 'GV_SR_TEAM_NONCE', 'gv_sr_team_nonce_action' );
 define( 'GV_SR_PROJECTS_NONCE', 'gv_sr_projects_nonce_action' );
 define( 'GV_SR_ADMIN_ACC_NONCE', 'gv_sr_admin_acc_nonce_action' );
+define( 'GV_SR_FIX_NONCE', 'gv_sr_fix_nonce_action' );
 
 /* ==========================================================================
    ۰) ساخت جداول دیتابیس
@@ -784,13 +785,8 @@ function gv_sr_get_or_create_open_report( $project, $period_jy = 0, $period_jm =
  * ------------------------------------------------------------------------
  * اگر در حال ویرایش یک ردیف کارکرد قبلی هستیم (timelog_id مشخص است)، دقیقاً
  * همان گزارشی که آن ردیف از قبل به آن متصل بود برگردانده می‌شود — نه یک
- * جست‌وجوی تازه بر اساس «ماه جاری». همین نکته، دلیل اصلیِ ساخته‌شدنِ گزارش
- * تکراری هنگام ویرایش بود: قبلاً هر بار (چه ثبت جدید، چه ویرایش) دوباره به
- * دنبال «گزارش باز ماه جاری» می‌گشت و اگر به هر دلیلی آن جست‌وجو گزارش قبلی
- * را پیدا نمی‌کرد، یک گزارش تازه می‌ساخت و ساعت/متن‌ها را در دو گزارش جدا
- * پخش می‌کرد (که در ظاهر شبیه «دو برابر شدن» به‌نظر می‌رسید).
- * برای ثبتِ کاملاً تازه (بدون ویرایش)، همچنان گزارشِ بازِ ماه جاری پیدا یا
- * ساخته می‌شود.
+ * جست‌وجوی تازه بر اساس «ماه جاری». برای ثبتِ کاملاً تازه (بدون ویرایش)،
+ * گزارشِ باز ماهی که مشخص شده (period_jy/period_jm) پیدا یا ساخته می‌شود.
  */
 function gv_sr_resolve_target_report( $project, $timelog_id = 0, $period_jy = 0, $period_jm = 0 ) {
 	if ( ! $project ) { return null; }
@@ -883,16 +879,20 @@ function gv_sr_quick_log_work_multi( $data, $activities, $timelog_id = 0 ) {
 	if ( $project ) {
 		/* از تابع مرکزی «تعیین گزارش هدف» استفاده می‌شود: اگر این یک ویرایش
 		   است، همان گزارشِ قبلیِ همین ردیف کارکرد برداشته می‌شود، نه یک
-		   جست‌وجوی تازه که ممکن است گزارش دیگری برگرداند. */
+		   جست‌وجوی تازه که ممکن است گزارش دیگری برگرداند. برای ثبت جدید،
+		   دوره‌ی گزارش یا از فیلد صریح period_jy/period_jm خوانده می‌شود
+		   یا (اگر خالی بود) از خودِ تاریخ فعالیت استخراج می‌شود — نه از
+		   «امروز» — تا فعالیت‌های ثبت‌شده برای ماه‌های گذشته در گزارشِ همان
+		   ماه بنشینند، نه در گزارشِ ماه جاری. */
 		$period_jy = isset( $data['period_jy'] ) ? (int) $data['period_jy'] : 0;
-$period_jm = isset( $data['period_jm'] ) ? (int) $data['period_jm'] : 0;
-if ( ( $period_jy <= 0 || $period_jm <= 0 ) && ! empty( $data['work_date'] ) ) {
-	$wd = explode( '-', $data['work_date'] );
-	if ( count( $wd ) === 3 ) {
-		list( $period_jy, $period_jm ) = gv_sr_g2j( (int) $wd[0], (int) $wd[1], (int) $wd[2] );
-	}
-}
-$report    = gv_sr_resolve_target_report( $project, $timelog_id, $period_jy, $period_jm );
+		$period_jm = isset( $data['period_jm'] ) ? (int) $data['period_jm'] : 0;
+		if ( ( $period_jy <= 0 || $period_jm <= 0 ) && ! empty( $data['work_date'] ) ) {
+			$wd = explode( '-', $data['work_date'] );
+			if ( count( $wd ) === 3 ) {
+				list( $period_jy, $period_jm ) = gv_sr_g2j( (int) $wd[0], (int) $wd[1], (int) $wd[2] );
+			}
+		}
+		$report    = gv_sr_resolve_target_report( $project, $timelog_id, $period_jy, $period_jm );
 		$report_id = $report ? (int) $report->id : 0;
 
 		/* اگر در حال ویرایش هستیم، فعالیت‌های قبلی همین ردیف کارکرد را حذف کن
@@ -966,6 +966,72 @@ function gv_sr_quick_delete_timelog( $timelog_id ) {
 	$wpdb->delete( $wpdb->prefix . 'gv_sr_timelogs', array( 'id' => (int) $timelog_id ) ); // phpcs:ignore
 
 	if ( ! empty( $log->report_id ) ) { gv_sr_recalc_report_hours( (int) $log->report_id ); }
+}
+
+/* ==========================================================================
+   ۳.۲) ابزار یک‌بارمصرف اصلاح داده‌های قدیمی (بازه‌ی اشتباه)
+   ------------------------------------------------------------------------
+   قبل از رفع باگ بالا، فعالیت‌هایی که کارمند برای تاریخی در یک ماه گذشته
+   ثبت کرده بود، اشتباهاً داخل گزارشِ «ماه جاریِ همان لحظه‌ی ثبت» ذخیره
+   می‌شدند. این تابع، فعالیت‌های هر گزارش را بر اساس تاریخ واقعی‌شان
+   بازبینی می‌کند: اگر ماهِ یک فعالیت (work_date) با بازه‌ی گزارشی که در آن
+   نشسته یکی نباشد، آن فعالیت (و ردیف تایم‌شیت متصل به آن) به گزارشِ درستِ
+   همان ماه/همان پروژه منتقل می‌شود (در صورت نبود، ساخته می‌شود). گزارش
+   مقصد و مبدأ هر دو در پایان بازمحاسبه می‌شوند. هیچ داده‌ای حذف نمی‌شود.
+ */
+function gv_sr_repair_misbucketed_tasks() {
+	global $wpdb;
+	$t_tasks = $wpdb->prefix . 'gv_sr_tasks';
+	$t_rep   = $wpdb->prefix . 'gv_sr_reports';
+	$t_log   = $wpdb->prefix . 'gv_sr_timelogs';
+
+	$rows = $wpdb->get_results( // phpcs:ignore
+		"SELECT t.id AS task_id, t.report_id, t.work_date, t.source_timelog_id, r.project_id, r.period_start, r.period_end
+		 FROM {$t_tasks} t INNER JOIN {$t_rep} r ON r.id = t.report_id"
+	);
+
+	$moved            = 0;
+	$affected_reports = array();
+
+	foreach ( $rows as $row ) {
+		if ( empty( $row->work_date ) || '0000-00-00' === $row->work_date ) { continue; }
+		if ( (int) $row->project_id <= 0 ) { continue; }
+		if ( $row->work_date >= $row->period_start && $row->work_date <= $row->period_end ) { continue; }
+
+		$wd = explode( '-', $row->work_date );
+		if ( count( $wd ) !== 3 ) { continue; }
+		list( $jy, $jm ) = gv_sr_g2j( (int) $wd[0], (int) $wd[1], (int) $wd[2] );
+
+		$project = gv_sr_get_project( (int) $row->project_id );
+		if ( ! $project ) { continue; }
+
+		$target_report = gv_sr_get_or_create_open_report( $project, $jy, $jm );
+		if ( ! $target_report || (int) $target_report->id === (int) $row->report_id ) { continue; }
+
+		$wpdb->update( $t_tasks, array( 'report_id' => (int) $target_report->id ), array( 'id' => (int) $row->task_id ) ); // phpcs:ignore
+		if ( ! empty( $row->source_timelog_id ) ) {
+			$wpdb->update( $t_log, array( 'report_id' => (int) $target_report->id ), array( 'id' => (int) $row->source_timelog_id ) ); // phpcs:ignore
+		}
+
+		$affected_reports[ (int) $row->report_id ]      = true;
+		$affected_reports[ (int) $target_report->id ]    = true;
+		$moved++;
+	}
+
+	foreach ( array_keys( $affected_reports ) as $rid ) {
+		gv_sr_recalc_report_hours( $rid );
+	}
+
+	return array( 'moved' => $moved, 'reports_touched' => count( $affected_reports ) );
+}
+
+add_action( 'admin_post_gv_sr_repair_misbucketed', 'gv_sr_handle_repair_misbucketed' );
+function gv_sr_handle_repair_misbucketed() {
+	if ( ! current_user_can( 'manage_options' ) || ! gv_sr_is_super_admin() ) { wp_die( 'دسترسی ندارید.' ); }
+	check_admin_referer( GV_SR_FIX_NONCE );
+	$result = gv_sr_repair_misbucketed_tasks();
+	wp_safe_redirect( admin_url( 'admin.php?page=' . GV_SR_PAGE_SLUG . '&tab=team&fixed_moved=' . (int) $result['moved'] . '&fixed_reports=' . (int) $result['reports_touched'] ) );
+	exit;
 }
 
 /* ==========================================================================
@@ -1856,15 +1922,15 @@ function gv_sr_handle_save_timelog() {
 	}
 
 	$data = array(
-'employee_id' => $employee_id,
-	'work_date'   => gv_sr_read_jalali_post( 'log_date' ),
-	'entry_mode'  => $entry_mode,
-	'start_time'  => $start_time,
-	'end_time'    => $end_time,
-	'hours'       => $hours,
-	'project_id'  => isset( $_POST['project_id'] ) ? (int) $_POST['project_id'] : 0,
-	'period_jy'   => isset( $_POST['report_period_jy'] ) ? (int) $_POST['report_period_jy'] : 0,
-	'period_jm'   => isset( $_POST['report_period_jm'] ) ? (int) $_POST['report_period_jm'] : 0,
+		'employee_id' => $employee_id,
+		'work_date'   => gv_sr_read_jalali_post( 'log_date' ),
+		'entry_mode'  => $entry_mode,
+		'start_time'  => $start_time,
+		'end_time'    => $end_time,
+		'hours'       => $hours,
+		'project_id'  => isset( $_POST['project_id'] ) ? (int) $_POST['project_id'] : 0,
+		'period_jy'   => isset( $_POST['report_period_jy'] ) ? (int) $_POST['report_period_jy'] : 0,
+		'period_jm'   => isset( $_POST['report_period_jm'] ) ? (int) $_POST['report_period_jm'] : 0,
 	);
 
 	if ( empty( $data['project_id'] ) ) {
@@ -2457,6 +2523,9 @@ function gv_sr_render_admin_page() {
 	if ( isset( $_GET['saved_emp'] ) ) { echo '<div class="gvsr-notice">اطلاعات کارمند ذخیره شد.</div>'; }
 	if ( isset( $_GET['emp_deleted'] ) ) { echo '<div class="gvsr-notice">کارمند حذف شد.</div>'; }
 	if ( isset( $_GET['pass_changed'] ) ) { echo '<div class="gvsr-notice">رمز عبور بخش مدیریت تیم تغییر کرد.</div>'; }
+	if ( isset( $_GET['fixed_moved'] ) ) {
+		echo '<div class="gvsr-notice">✅ اصلاح داده‌های قدیمی انجام شد: ' . esc_html( gv_sr_fa_digits( (int) $_GET['fixed_moved'] ) ) . ' فعالیت به گزارشِ ماهِ درستشان منتقل شد' . ( isset( $_GET['fixed_reports'] ) ? ' (' . esc_html( gv_sr_fa_digits( (int) $_GET['fixed_reports'] ) ) . ' گزارش تحت تأثیر قرار گرفت)' : '' ) . '.</div>';
+	}
 	if ( isset( $_GET['err'] ) && 'noemp' === $_GET['err'] ) { echo '<div class="gvsr-notice" style="background:#fee2e2;color:#b91c1c;border-color:#fca5a5;">ابتدا باید مشخص کنید چه کسی هستید.</div>'; }
 	if ( isset( $_GET['err'] ) && 'noproject' === $_GET['err'] ) { echo '<div class="gvsr-notice" style="background:#fee2e2;color:#b91c1c;border-color:#fca5a5;">لطفاً ابتدا یک پروژه انتخاب کنید.</div>'; }
 
@@ -2474,7 +2543,7 @@ function gv_sr_render_admin_page() {
 		if ( $report ) {
 			echo '<div class="gvsr-preview-tools">';
 			if ( $report->project_id > 0 ) {
-				echo '<a class="gvsr-btn-export" href="' . esc_url( admin_url( 'admin.php?page=' . GV_SR_PAGE_SLUG . '&tab=quickreport&project_id=' . $report->project_id ) ) . '">✏️ ویرایش / انتشار گزارش</a>';
+				echo '<a class="gvsr-btn-export" href="' . esc_url( admin_url( 'admin.php?page=' . GV_SR_PAGE_SLUG . '&tab=quickreport&report_id=' . $report->id ) ) . '">✏️ ویرایش / انتشار گزارش</a>';
 			}
 			echo '<a class="gvsr-btn-ghost" href="' . esc_url( wp_nonce_url( admin_url( 'admin-post.php?action=gv_sr_export_tasks_csv&id=' . $id ), GV_SR_NONCE ) ) . '">📥 خروجی CSV فعالیت‌ها</a>';
 			echo '<span class="gvsr-hint-inline">این پیش‌نمایش دقیقاً همان چیزی است که مشتری می‌بیند؛ بخش‌های مخفی با برچسب قرمز مشخص شده‌اند.</span>';
@@ -2766,8 +2835,8 @@ function gv_sr_render_quick_report_tab() {
 	/* پیش‌مقداردهی: اگر در حال ویرایش یک ردیف کارکرد قبلی هستیم، از همان
 	   گزارشی که آن ردیف واقعاً به آن متصل است بخوان (نه لزوماً گزارش «ماه
 	   جاری»)، تا با ویرایش، تنظیمات یک گزارش دیگر خوانده یا بازنویسی نشود.
-	   برای ثبتِ کاملاً تازه، از گزارش بازِ همین ماهِ پروژه (چه پیش‌نویس، چه
-	   منتشرشده) پیش‌مقداردهی می‌شود. */
+	   اگر از لیست با report_id آمده‌ایم، دقیقاً همان گزارش. برای ثبتِ
+	   کاملاً تازه، از گزارش بازِ همین ماهِ پروژه پیش‌مقداردهی می‌شود. */
 	if ( $editing && (int) $editing->report_id > 0 ) {
 		$peek_report  = gv_sr_get_report( (int) $editing->report_id );
 		$peek_project = $peek_report && (int) $peek_report->project_id > 0
@@ -2790,7 +2859,18 @@ function gv_sr_render_quick_report_tab() {
 	<div class="gvsr-quicklog-wrap" style="grid-template-columns:1fr 220px;">
 		<div>
 			<div class="gvsr-report-card gvsr-quicklog-card">
-				<h3><?php echo $editing ? '✏️ ویرایش گزارش ثبت‌شده' : '⚡ ثبت گزارش جدید'; ?></h3>
+				<h3><?php
+					if ( $editing ) {
+						echo '✏️ ویرایش گزارش ثبت‌شده';
+					} elseif ( $editing_report ) {
+						echo '✏️ ویرایش گزارش: ' . esc_html( gv_sr_client_safe_report_label( $editing_report ) );
+					} else {
+						echo '⚡ ثبت گزارش جدید';
+					}
+				?></h3>
+				<?php if ( $editing_report && ! $editing ) : ?>
+					<p class="gvsr-hint-inline" style="margin-top:-6px;margin-bottom:14px;">در حال ویرایش گزارشِ <b><?php echo esc_html( $editing_report->client_name ); ?></b> برای بازه‌ی <b><?php echo esc_html( gv_sr_jalali_numeric( $editing_report->period_start ) . ' تا ' . gv_sr_jalali_numeric( $editing_report->period_end ) ); ?></b> — هر فعالیت جدیدی که ثبت کنید به همین گزارش اضافه می‌شود.</p>
+				<?php endif; ?>
 
 				<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" class="gvsr-quicklog-form" id="gvsr-quicklog-form">
 					<?php wp_nonce_field( GV_SR_NONCE ); ?>
@@ -3224,6 +3304,11 @@ function gv_sr_render_team_tab() {
 			<span class="gvsr-nav-card-title">حساب‌های مدیریتی</span>
 			<span class="gvsr-nav-card-desc">افزودن/حذف مدیر تیم سئو و مدیر اصلی</span>
 		</button>
+		<button type="button" class="gvsr-nav-card" data-target="gvsr-sec-fixdata">
+			<span class="gvsr-nav-card-icon">🩹</span>
+			<span class="gvsr-nav-card-title">اصلاح داده‌های قدیمی</span>
+			<span class="gvsr-nav-card-desc">جابه‌جایی فعالیت‌های ثبت‌شده در بازه‌ی اشتباه</span>
+		</button>
 		<?php endif; ?>
 	</div>
 
@@ -3487,7 +3572,7 @@ function gv_sr_render_team_tab() {
 		</div>
 	</details>
 
-	<?php if ( $is_super ) : gv_sr_render_admin_accounts_section(); endif; ?>
+	<?php if ( $is_super ) : gv_sr_render_admin_accounts_section(); gv_sr_render_fix_data_section(); endif; ?>
 
 	<script>
 	document.addEventListener('DOMContentLoaded', function () {
@@ -3609,6 +3694,32 @@ function gv_sr_render_admin_accounts_section() {
 					<input type="checkbox" name="active" <?php checked( ! $editing || (int) $editing->active === 1 ); ?>> حساب فعال است
 				</label>
 				<button type="submit" class="gvsr-btn-export">💾 ذخیره حساب</button>
+			</form>
+		</div>
+	</details>
+	<?php
+}
+
+/**
+ * بخش «اصلاح داده‌های قدیمی» — فقط برای مدیر اصلی. یک ابزار یک‌بارمصرف که
+ * فعالیت‌های ثبت‌شده در گزارشِ ماهِ اشتباه (مربوط به باگ قبلی) را به گزارشِ
+ * ماهِ درست‌شان منتقل می‌کند. اجرای دوباره‌ی آن بی‌خطر است — اگر داده‌ی
+ * اشتباهی باقی نمانده باشد، هیچ تغییری اعمال نمی‌شود.
+ */
+function gv_sr_render_fix_data_section() {
+	?>
+	<details class="gvsr-section-toggle" id="gvsr-sec-fixdata">
+		<summary>🩹 اصلاح داده‌های قدیمی (بازه‌ی اشتباه گزارش)</summary>
+		<div class="gvsr-section-toggle-body">
+			<p class="gvsr-hint">
+				پیش از این، فعالیت‌هایی که کارمند برای یک تاریخ در ماه گذشته ثبت می‌کرد، به‌اشتباه داخل گزارشِ «ماه جاری» ذخیره می‌شدند.
+				این ابزار همه‌ی فعالیت‌های ثبت‌شده در سامانه را بررسی می‌کند: هر فعالیتی که تاریخش با بازه‌ی گزارشی که در آن نشسته یکی نباشد،
+				به گزارشِ همان ماه/همان پروژه منتقل می‌شود (در صورت نبود، ساخته می‌شود). هیچ داده‌ای حذف نمی‌گردد و اجرای چندباره‌ی این ابزار بی‌خطر است.
+			</p>
+			<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>">
+				<?php wp_nonce_field( GV_SR_FIX_NONCE ); ?>
+				<input type="hidden" name="action" value="gv_sr_repair_misbucketed">
+				<button type="submit" class="gvsr-btn-export" onclick="return confirm('این عملیات فعالیت‌های ثبت‌شده در بازه‌ی اشتباه را به گزارشِ ماهِ درست منتقل می‌کند. ادامه می‌دهید؟');">🩹 اجرای اصلاح داده‌ها</button>
 			</form>
 		</div>
 	</details>
