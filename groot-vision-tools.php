@@ -3,7 +3,7 @@
 Plugin Name: Groot Vision Tools
 Plugin URI: https://grootvision.com
 Description: مجموعه ابزارهای اختصاصی گروت ویژن
-Version: 7.0.4
+Version: 7.1.1
 Author: Groot Vision
 Author URI: https://grootvision.com
 */
@@ -18,7 +18,7 @@ if ( ! defined('ABSPATH') ) {
 */
 define('GV_TOOLS_PATH', plugin_dir_path(__FILE__));
 define('GV_TOOLS_URL', plugin_dir_url(__FILE__));
-define('GV_TOOLS_VERSION', '7.0.4'); // هر بار نسخه جدید منتشر می‌کنید، این عدد را هم مثل بالای فایل تغییر دهید
+define('GV_TOOLS_VERSION', '7.1.1'); // هر بار نسخه جدید منتشر می‌کنید، این عدد را هم مثل بالای فایل تغییر دهید
 /*
 |--------------------------------------------------
 | لود ماژول‌ها
@@ -38,6 +38,9 @@ require_once GV_TOOLS_PATH . 'modules/font_manager.php';
 require_once GV_TOOLS_PATH . 'modules/post_date_jalali.php';
 require_once GV_TOOLS_PATH . 'modules/visitor_analytics.php';
 require_once GV_TOOLS_PATH . 'modules/maintenance.php';
+
+/* بازطراحی محیط پیشخوان وردپرس (تم مینیمال/تیره/بنفش + نمایش/مخفی‌سازی گزینه‌های منو) */
+require_once GV_TOOLS_PATH . 'modules/admin_ui_theme.php';
 
 /* فایل سیستم تیکت */
 require_once GV_TOOLS_PATH . 'modules/support_tickets.php';

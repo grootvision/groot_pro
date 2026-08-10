@@ -448,6 +448,37 @@ function gv_sr_jalali_select_fields( $name, $mysql_date = '', $compact = false )
 	<?php
 	return ob_get_clean();
 }
+/** یک فیلد جست‌وجوی کاربر سایت (به‌جای دراپ‌داون طولانی wp_dropdown_users) */
+function gv_sr_render_user_search_select( $name, $selected_id = 0 ) {
+	$selected_id = (int) $selected_id;
+	$users = get_users( array( 'fields' => array( 'ID', 'display_name', 'user_login' ), 'orderby' => 'display_name', 'number' => 2000 ) );
+
+	$options        = array();
+	$selected_label = '— بدون اتصال —';
+	foreach ( $users as $u ) {
+		$label       = $u->display_name . ' (' . $u->user_login . ')';
+		$options[]   = array( 'id' => (int) $u->ID, 'label' => $label );
+		if ( (int) $u->ID === $selected_id ) { $selected_label = $label; }
+	}
+
+	$list_id = 'gvsr-ulist-' . sanitize_html_class( $name );
+	ob_start();
+	?>
+	<span class="gvsr-user-search">
+		<input type="text" class="gvsr-select gvsr-user-search-input" list="<?php echo esc_attr( $list_id ); ?>"
+			   data-options="<?php echo esc_attr( wp_json_encode( $options ) ); ?>"
+			   value="<?php echo esc_attr( $selected_label ); ?>" placeholder="جست‌وجوی نام یا نام‌کاربری کاربر..." autocomplete="off">
+		<input type="hidden" name="<?php echo esc_attr( $name ); ?>" class="gvsr-user-search-hidden" value="<?php echo esc_attr( $selected_id ); ?>">
+		<datalist id="<?php echo esc_attr( $list_id ); ?>">
+			<option value="— بدون اتصال —"></option>
+			<?php foreach ( $options as $opt ) : ?>
+				<option value="<?php echo esc_attr( $opt['label'] ); ?>"></option>
+			<?php endforeach; ?>
+		</datalist>
+	</span>
+	<?php
+	return ob_get_clean();
+}
 
 function gv_sr_read_jalali_post( $name ) {
 	if ( ! isset( $_POST[ $name . '_jy' ], $_POST[ $name . '_jm' ], $_POST[ $name . '_jd' ] ) ) {
@@ -623,16 +654,11 @@ function gv_sr_get_project_recent_keywords( $project_id ) {
 }
 
 /** درج یا به‌روزرسانی یک ردیف کلمه کلیدی در گزارش (به‌جای حذف‌وجایگزینی کامل) */
-function gv_sr_upsert_keyword_row( $report_id, $data ) {
+function gv_sr_upsert_keyword_row( $report_id, $row_id, $data ) {
 	global $wpdb;
 	$t       = $wpdb->prefix . 'gv_sr_keywords';
 	$keyword = sanitize_text_field( $data['keyword'] );
 	if ( '' === trim( $keyword ) ) { return; }
-
-	$existing = $wpdb->get_row( $wpdb->prepare( // phpcs:ignore
-		"SELECT id FROM {$t} WHERE report_id = %d AND keyword = %s LIMIT 1",
-		(int) $report_id, $keyword
-	) );
 
 	$row = array(
 		'report_id'     => (int) $report_id,
@@ -644,12 +670,33 @@ function gv_sr_upsert_keyword_row( $report_id, $data ) {
 		'note'          => sanitize_text_field( $data['note'] ?? '' ),
 	);
 
+	$row_id = (int) $row_id;
+	/* اگر شناسه ردیف مشخص است (یعنی داریم یک کلمه کلیدیِ از قبل ثبت‌شده را
+	   ویرایش می‌کنیم)، دقیقاً همان ردیف به‌روزرسانی می‌شود — نه جست‌وجوی
+	   تازه بر اساس متنِ کلمه، که ممکن است با تغییرِ متن اشتباه برود. */
+	if ( $row_id > 0 ) {
+		$wpdb->update( $t, $row, array( 'id' => $row_id, 'report_id' => (int) $report_id ) ); // phpcs:ignore
+		return;
+	}
+
+	/* ردیف تازه (بدون شناسه): سازگار با فراخوانی‌های قدیمی — اگر کلمه‌ای با
+	   همین متن قبلاً در همین گزارش هست، به‌روزرسانی می‌شود؛ وگرنه درج می‌شود. */
+	$existing = $wpdb->get_row( $wpdb->prepare( // phpcs:ignore
+		"SELECT id FROM {$t} WHERE report_id = %d AND keyword = %s LIMIT 1",
+		(int) $report_id, $keyword
+	) );
 	if ( $existing ) {
 		$wpdb->update( $t, $row, array( 'id' => (int) $existing->id ) ); // phpcs:ignore
 	} else {
 		$row['sort_order'] = (int) $wpdb->get_var( $wpdb->prepare( "SELECT COUNT(*) FROM {$t} WHERE report_id = %d", (int) $report_id ) ); // phpcs:ignore
 		$wpdb->insert( $t, $row ); // phpcs:ignore
 	}
+}
+
+/** حذف یک ردیف کلمه کلیدی با شناسه (وقتی کارمند آن را در فرم ویرایش خالی/حذف می‌کند) */
+function gv_sr_delete_keyword_row( $id ) {
+	global $wpdb;
+	$wpdb->delete( $wpdb->prefix . 'gv_sr_keywords', array( 'id' => (int) $id ) ); // phpcs:ignore
 }
 
 /** فقط اضافه‌کردن ردیف‌های رشد جدید، بدون حذف ردیف‌های قبلی گزارش */
@@ -669,6 +716,25 @@ function gv_sr_add_growth_rows( $report_id, $rows ) {
 			'note'         => sanitize_text_field( $r['note'] ?? '' ),
 		) );
 	}
+}
+/** به‌روزرسانی یک ردیف رشدِ از قبل ثبت‌شده (با شناسه دقیق) */
+function gv_sr_update_growth_row( $id, $data ) {
+	global $wpdb;
+	$t = $wpdb->prefix . 'gv_sr_growth';
+	$wpdb->update( $t, array( // phpcs:ignore
+		'page_title'   => sanitize_text_field( $data['page_title'] ?? '' ),
+		'page_url'     => esc_url_raw( $data['page_url'] ?? '' ),
+		'metric_label' => sanitize_text_field( $data['metric_label'] ?: 'رشد' ),
+		'before_value' => sanitize_text_field( $data['before_value'] ?? '' ),
+		'after_value'  => sanitize_text_field( $data['after_value'] ?? '' ),
+		'note'         => sanitize_text_field( $data['note'] ?? '' ),
+	), array( 'id' => (int) $id ) );
+}
+
+/** حذف یک ردیف رشد با شناسه */
+function gv_sr_delete_growth_row( $id ) {
+	global $wpdb;
+	$wpdb->delete( $wpdb->prefix . 'gv_sr_growth', array( 'id' => (int) $id ) ); // phpcs:ignore
 }
 
 /** به‌روزرسانی جزئی کنترل نمایش یک گزارش (بدون دست‌زدن به بقیه‌ی فیلدهای گزارش) */
@@ -1959,11 +2025,20 @@ function gv_sr_handle_save_timelog() {
 	$report        = ( $saved_timelog && (int) $saved_timelog->report_id > 0 ) ? gv_sr_get_report( (int) $saved_timelog->report_id ) : null;
 
 	/* --- کلمات کلیدی (درج/به‌روزرسانی، بدون حذف کلمات قبلی گزارش) --- */
+	/* --- کلمات کلیدی: درج جدید / ویرایش ردیف قبلی / حذف ردیف قبلی --- */
 	if ( $report && ! empty( $_POST['kw_keyword'] ) && is_array( $_POST['kw_keyword'] ) ) {
+		$kw_ids = isset( $_POST['kw_id'] ) ? (array) $_POST['kw_id'] : array();
 		foreach ( $_POST['kw_keyword'] as $i => $keyword ) {
-			if ( '' === trim( (string) $keyword ) ) { continue; }
-			gv_sr_upsert_keyword_row( $report->id, array(
-				'keyword'       => wp_unslash( $keyword ),
+			$row_id  = isset( $kw_ids[ $i ] ) ? (int) $kw_ids[ $i ] : 0;
+			$keyword = wp_unslash( $keyword );
+
+			if ( '' === trim( (string) $keyword ) ) {
+				if ( $row_id > 0 ) { gv_sr_delete_keyword_row( $row_id ); }
+				continue;
+			}
+
+			gv_sr_upsert_keyword_row( $report->id, $row_id, array(
+				'keyword'       => $keyword,
 				'search_engine' => wp_unslash( $_POST['kw_engine'][ $i ] ?? 'گوگل' ),
 				'page_url'      => wp_unslash( $_POST['kw_url'][ $i ] ?? '' ),
 				'prev_rank'     => $_POST['kw_prev'][ $i ] ?? 0,
@@ -1974,23 +2049,37 @@ function gv_sr_handle_save_timelog() {
 	}
 
 	/* --- رشد صفحات (فقط اضافه‌کردن) --- */
+	/* --- رشد صفحات: درج جدید / ویرایش ردیف قبلی / حذف ردیف قبلی --- */
 	if ( $report && ! empty( $_POST['growth_metric'] ) && is_array( $_POST['growth_metric'] ) ) {
-		$growth_rows = array();
+		$growth_ids = isset( $_POST['growth_id'] ) ? (array) $_POST['growth_id'] : array();
 		foreach ( $_POST['growth_metric'] as $i => $metric ) {
-			$title = wp_unslash( $_POST['growth_title'][ $i ] ?? '' );
+			$row_id = isset( $growth_ids[ $i ] ) ? (int) $growth_ids[ $i ] : 0;
+			$title  = wp_unslash( $_POST['growth_title'][ $i ] ?? '' );
 			$before = wp_unslash( $_POST['growth_before'][ $i ] ?? '' );
 			$after  = wp_unslash( $_POST['growth_after'][ $i ] ?? '' );
-			if ( '' === trim( (string) $title ) && '' === trim( (string) $before ) && '' === trim( (string) $after ) ) { continue; }
-			$growth_rows[] = array(
+			$metric = wp_unslash( $metric );
+
+			$is_empty = '' === trim( (string) $title ) && '' === trim( (string) $before ) && '' === trim( (string) $after ) && '' === trim( (string) $metric );
+			if ( $is_empty ) {
+				if ( $row_id > 0 ) { gv_sr_delete_growth_row( $row_id ); }
+				continue;
+			}
+
+			$g_data = array(
 				'page_title'   => $title,
 				'page_url'     => wp_unslash( $_POST['growth_url'][ $i ] ?? '' ),
-				'metric_label' => wp_unslash( $metric ),
+				'metric_label' => $metric ?: 'رشد',
 				'before_value' => $before,
 				'after_value'  => $after,
 				'note'         => wp_unslash( $_POST['growth_note'][ $i ] ?? '' ),
 			);
+
+			if ( $row_id > 0 ) {
+				gv_sr_update_growth_row( $row_id, $g_data );
+			} else {
+				gv_sr_add_growth_rows( $report->id, array( $g_data ) );
+			}
 		}
-		gv_sr_add_growth_rows( $report->id, $growth_rows );
 	}
 
 	/* --- انتشار، اتصال به کاربر سایت، و نتیجه‌ی کلی گزارش (وضعیت/خلاصه/گام بعدی) ---
@@ -2473,6 +2562,18 @@ function gv_sr_render_top_bar() {
 function gv_sr_render_global_scripts() {
 	?>
 	<script>
+		<script>
+	document.addEventListener('input', function (e) {
+		if (!e.target.classList || !e.target.classList.contains('gvsr-user-search-input')) { return; }
+		var wrap = e.target.closest('.gvsr-user-search');
+		var hidden = wrap ? wrap.querySelector('.gvsr-user-search-hidden') : null;
+		if (!hidden) { return; }
+		if (e.target.value.trim() === '' || e.target.value.trim() === '— بدون اتصال —') { hidden.value = '0'; return; }
+		var options = JSON.parse(e.target.getAttribute('data-options') || '[]');
+		var match = options.find(function (o) { return o.label === e.target.value; });
+		if (match) { hidden.value = match.id; }
+	});
+	</script>
 	document.addEventListener('keydown', function (e) {
 		if (e.key !== 'Enter') { return; }
 		var el = e.target;
@@ -2855,9 +2956,41 @@ function gv_sr_render_quick_report_tab() {
 	$report_summary_v    = $peek_report ? $peek_report->summary : '';
 	$report_next_v       = $peek_report ? $peek_report->next_steps : '';
 	$task_types          = gv_sr_task_types();
+	$existing_keywords   = $peek_report ? gv_sr_get_keywords( $peek_report->id ) : array();
+	$existing_growth     = $peek_report ? gv_sr_get_growth( $peek_report->id ) : array();
+	$existing_tasks_list = $peek_report ? gv_sr_get_tasks( $peek_report->id, 'work_date', 'DESC' ) : array();
 	?>
 	<div class="gvsr-quicklog-wrap" style="grid-template-columns:1fr 220px;">
 		<div>
+			<?php if ( ! empty( $existing_tasks_list ) ) : ?>
+			<div class="gvsr-report-card" style="margin-bottom:14px;">
+				<h3 style="font-size:13px;">🗂️ فعالیت‌های قبلاً ثبت‌شده در این گزارش</h3>
+				<div class="gvsr-table-wrap" style="max-width:100%;">
+					<table class="gvsr-table">
+						<thead><tr><th>تاریخ</th><th>نوع</th><th>توضیح</th><th>ساعت</th><th>عملیات</th></tr></thead>
+						<tbody>
+						<?php foreach ( $existing_tasks_list as $et ) :
+							$et_info = $task_types[ $et->task_type ] ?? array( 'label' => $et->task_type, 'icon' => '•' );
+							?>
+							<tr>
+								<td><?php echo esc_html( gv_sr_jalali_numeric( $et->work_date ) ); ?></td>
+								<td><?php echo esc_html( $et_info['icon'] . ' ' . $et_info['label'] ); ?></td>
+								<td><?php echo esc_html( $et->note ?: $et->title ); ?></td>
+								<td><?php echo esc_html( gv_sr_fa_digits( $et->hours ) ); ?></td>
+								<td>
+									<?php if ( $et->source_timelog_id > 0 ) : ?>
+										<a href="<?php echo esc_url( admin_url( 'admin.php?page=' . GV_SR_PAGE_SLUG . '&tab=quickreport&edit_log=' . (int) $et->source_timelog_id ) ); ?>">ویرایش</a>
+									<?php else : ?>—<?php endif; ?>
+								</td>
+							</tr>
+						<?php endforeach; ?>
+						</tbody>
+					</table>
+				</div>
+				<p class="gvsr-hint-inline">برای ویرایش یک فعالیت، روی «ویرایش» همان ردیف بزنید تا فرم زیر برای همان کارکرد باز شود (فقط اگر خودتان آن را ثبت کرده باشید).</p>
+			</div>
+			<?php endif; ?>
+
 			<div class="gvsr-report-card gvsr-quicklog-card">
 				<h3><?php
 					if ( $editing ) {
@@ -3006,17 +3139,35 @@ function gv_sr_render_quick_report_tab() {
 									<th style="width:34px;"></th>
 								</tr></thead>
 								<tbody>
-									<tr>
-										<td><input type="text" name="kw_keyword[]" class="gvsr-kw-input" list="gvsr-kw-datalist"></td>
-										<td><input type="text" name="kw_engine[]" value="گوگل"></td>
-										<td><input type="url" name="kw_url[]"></td>
-										<td><input type="number" min="0" name="kw_prev[]" class="gvsr-kw-prev"></td>
-										<td><input type="number" min="0" name="kw_curr[]"></td>
-										<td><input type="text" name="kw_note[]"></td>
+									<?php
+									$kw_render_rows = array();
+									foreach ( $existing_keywords as $k ) {
+										$kw_render_rows[] = array(
+											'id' => (int) $k->id, 'keyword' => $k->keyword, 'search_engine' => $k->search_engine,
+											'page_url' => $k->page_url, 'prev_rank' => $k->prev_rank, 'curr_rank' => $k->curr_rank, 'note' => $k->note,
+										);
+									}
+									$kw_render_rows[] = array( 'id' => 0, 'keyword' => '', 'search_engine' => 'گوگل', 'page_url' => '', 'prev_rank' => '', 'curr_rank' => '', 'note' => '' );
+									foreach ( $kw_render_rows as $kwr ) :
+									?>
+									<tr<?php echo $kwr['id'] ? ' class="gvsr-existing-row"' : ''; ?>>
+										<td>
+											<input type="hidden" class="gvsr-row-id" name="kw_id[]" value="<?php echo esc_attr( $kwr['id'] ); ?>">
+											<input type="text" name="kw_keyword[]" class="gvsr-kw-input" list="gvsr-kw-datalist" value="<?php echo esc_attr( $kwr['keyword'] ); ?>">
+										</td>
+										<td><input type="text" name="kw_engine[]" value="<?php echo esc_attr( $kwr['search_engine'] ? $kwr['search_engine'] : 'گوگل' ); ?>"></td>
+										<td><input type="url" name="kw_url[]" value="<?php echo esc_attr( $kwr['page_url'] ); ?>"></td>
+										<td><input type="number" min="0" name="kw_prev[]" class="gvsr-kw-prev" value="<?php echo esc_attr( $kwr['prev_rank'] ); ?>"></td>
+										<td><input type="number" min="0" name="kw_curr[]" value="<?php echo esc_attr( $kwr['curr_rank'] ); ?>"></td>
+										<td><input type="text" name="kw_note[]" value="<?php echo esc_attr( $kwr['note'] ); ?>"></td>
 										<td><button type="button" class="gvsr-row-del">✕</button></td>
 									</tr>
+									<?php endforeach; ?>
 								</tbody>
 							</table>
+							<?php if ( ! empty( $existing_keywords ) ) : ?>
+								<p class="gvsr-hint" style="margin-top:-4px;">کلمات کلیدی قبلیِ این گزارش بالا نمایش داده شدند؛ برای حذف یک ردیف روی ✕ بزنید (روی همان دکمه دوباره بزنید تا بازگردد).</p>
+							<?php endif; ?>
 							<button type="button" class="gvsr-btn-add" data-target="gvsr-repeater-kw">➕ افزودن کلمه کلیدی</button>
 							<datalist id="gvsr-kw-datalist"></datalist>
 						</div>
@@ -3038,17 +3189,35 @@ function gv_sr_render_quick_report_tab() {
 									<th style="width:34px;"></th>
 								</tr></thead>
 								<tbody>
-									<tr>
-										<td><input type="text" name="growth_title[]"></td>
-										<td><input type="url" name="growth_url[]"></td>
-										<td><input type="text" name="growth_metric[]" placeholder="مثلاً: بازدید ماهانه صفحه"></td>
-										<td><input type="text" name="growth_before[]"></td>
-										<td><input type="text" name="growth_after[]"></td>
-										<td><input type="text" name="growth_note[]"></td>
+									<?php
+									$growth_render_rows = array();
+									foreach ( $existing_growth as $g ) {
+										$growth_render_rows[] = array(
+											'id' => (int) $g->id, 'page_title' => $g->page_title, 'page_url' => $g->page_url,
+											'metric_label' => $g->metric_label, 'before_value' => $g->before_value, 'after_value' => $g->after_value, 'note' => $g->note,
+										);
+									}
+									$growth_render_rows[] = array( 'id' => 0, 'page_title' => '', 'page_url' => '', 'metric_label' => '', 'before_value' => '', 'after_value' => '', 'note' => '' );
+									foreach ( $growth_render_rows as $gr ) :
+									?>
+									<tr<?php echo $gr['id'] ? ' class="gvsr-existing-row"' : ''; ?>>
+										<td>
+											<input type="hidden" class="gvsr-row-id" name="growth_id[]" value="<?php echo esc_attr( $gr['id'] ); ?>">
+											<input type="text" name="growth_title[]" value="<?php echo esc_attr( $gr['page_title'] ); ?>">
+										</td>
+										<td><input type="url" name="growth_url[]" value="<?php echo esc_attr( $gr['page_url'] ); ?>"></td>
+										<td><input type="text" name="growth_metric[]" placeholder="مثلاً: بازدید ماهانه صفحه" value="<?php echo esc_attr( $gr['metric_label'] ); ?>"></td>
+										<td><input type="text" name="growth_before[]" value="<?php echo esc_attr( $gr['before_value'] ); ?>"></td>
+										<td><input type="text" name="growth_after[]" value="<?php echo esc_attr( $gr['after_value'] ); ?>"></td>
+										<td><input type="text" name="growth_note[]" value="<?php echo esc_attr( $gr['note'] ); ?>"></td>
 										<td><button type="button" class="gvsr-row-del">✕</button></td>
 									</tr>
+									<?php endforeach; ?>
 								</tbody>
 							</table>
+							<?php if ( ! empty( $existing_growth ) ) : ?>
+								<p class="gvsr-hint" style="margin-top:-4px;">ردیف‌های رشدِ قبلیِ این گزارش بالا نمایش داده شدند؛ برای حذف یک ردیف روی ✕ بزنید.</p>
+							<?php endif; ?>
 							<button type="button" class="gvsr-btn-add" data-target="gvsr-repeater-growth">➕ افزودن ردیف رشد</button>
 						</div>
 					</div>
@@ -3085,15 +3254,7 @@ function gv_sr_render_quick_report_tab() {
 									</select>
 								</label>
 								<label>اتصال به کاربر سایت (برای ورود مشتری به پنل)
-									<?php
-									wp_dropdown_users( array(
-										'name'              => 'report_user_id',
-										'show_option_none'  => '— بدون اتصال —',
-										'option_none_value' => 0,
-										'selected'          => $report_user_id_val,
-										'class'             => 'gvsr-ql-field gvsr-select',
-									) );
-									?>
+									<?php echo gv_sr_render_user_search_select( 'report_user_id', $report_user_id_val ); ?>
 								</label>
 							</div>
 							<label>خلاصه عملکرد (برای مشتری)
@@ -3158,22 +3319,49 @@ function gv_sr_render_quick_report_tab() {
 				var tbody = table.querySelector('tbody');
 				var lastRow = tbody.querySelector('tr:last-child');
 				var newRow = lastRow.cloneNode(true);
-				newRow.querySelectorAll('input[type="text"], input[type="url"], input[type="number"]').forEach(function (el) { el.value = ''; });
+				newRow.classList.remove('gvsr-existing-row', 'gvsr-row-marked-del');
+				newRow.querySelectorAll('input[type="text"], input[type="url"], input[type="number"]').forEach(function (el) {
+					el.value = ''; el.readOnly = false; delete el.dataset.gvsrPrev;
+				});
 				newRow.querySelectorAll('select').forEach(function (el) { el.selectedIndex = 0; });
+				newRow.querySelectorAll('input.gvsr-row-id').forEach(function (el) { el.value = '0'; });
+				var delBtn = newRow.querySelector('.gvsr-row-del');
+				if (delBtn) { delBtn.textContent = '✕'; }
 				tbody.appendChild(newRow);
 				bindKeywordAutofill(newRow);
 			});
 		});
+
 		document.addEventListener('click', function (e) {
-			if (e.target && e.target.classList.contains('gvsr-row-del')) {
-				var tbody = e.target.closest('tbody');
-				if (tbody.querySelectorAll('tr').length > 1) {
-					e.target.closest('tr').remove();
-				} else {
-					var row = e.target.closest('tr');
-					row.querySelectorAll('input[type="text"], input[type="url"], input[type="number"]').forEach(function (el) { el.value = ''; });
-					row.querySelectorAll('select').forEach(function (el) { el.selectedIndex = 0; });
-				}
+			if (!e.target || !e.target.classList.contains('gvsr-row-del')) { return; }
+			var row = e.target.closest('tr');
+			var tbody = row.closest('tbody');
+			var idInput = row.querySelector('input.gvsr-row-id');
+
+			/* ردیف‌هایی که از قبل در دیتابیس ذخیره شده‌اند (کلمه کلیدی/رشدِ قبلی):
+			   به‌جای حذف از فرم، فقط علامت‌گذاری می‌شوند تا موقع ذخیره، سرور
+			   واقعاً همان ردیف را حذف کند. کلیک دوباره = بازگردانی. */
+			if (idInput && idInput.value && idInput.value !== '0') {
+				var marked = row.classList.toggle('gvsr-row-marked-del');
+				row.querySelectorAll('input[type="text"], input[type="url"], input[type="number"]').forEach(function (el) {
+					if (marked) {
+						el.dataset.gvsrPrev = el.value;
+						el.value = '';
+						el.readOnly = true;
+					} else {
+						el.readOnly = false;
+						el.value = el.dataset.gvsrPrev || '';
+					}
+				});
+				e.target.textContent = marked ? '↩' : '✕';
+				return;
+			}
+
+			if (tbody.querySelectorAll('tr').length > 1) {
+				row.remove();
+			} else {
+				row.querySelectorAll('input[type="text"], input[type="url"], input[type="number"]').forEach(function (el) { el.value = ''; });
+				row.querySelectorAll('select').forEach(function (el) { el.selectedIndex = 0; });
 			}
 		});
 
@@ -3812,7 +4000,11 @@ function gv_sr_admin_styles() {
 		.gvsr-repeater th{background:#f8fafc;font-size:10.8px;color:var(--gv-ink-soft);padding:7px 8px;text-align:right;font-weight:800;}
 		.gvsr-repeater td{padding:5px 6px;border-top:1px solid #f1f5f9;vertical-align:middle;}
 		.gvsr-repeater input,.gvsr-repeater select{width:100%;box-sizing:border-box;padding:7px 8px;border:1px solid var(--gv-border);border-radius:7px;font-family:inherit;font-size:11.5px;}
-
+.gvsr-repeater tr.gvsr-existing-row{background:#f8fafc;}
+		.gvsr-repeater tr.gvsr-row-marked-del{opacity:.4;text-decoration:line-through;}
+		.gvsr-user-search{display:block;width:100%;}
+		.gvsr-user-search-input{width:100%;box-sizing:border-box;margin-top:6px;padding:9px 11px;border:1px solid var(--gv-border);border-radius:var(--gv-radius-sm);font-family:inherit;font-size:12.6px;}
+		.gvsr-user-search-input:focus{outline:0;border-color:var(--gv-accent);box-shadow:0 0 0 3px var(--gv-accent-soft);}
 		/* ---------- تاریخ شمسی: کارت فشرده و خوانا به‌جای سه select پراکنده ---------- */
 		.gvsr-jdate-group{display:inline-flex;align-items:center;gap:2px;background:#f8fafc;border:1px solid var(--gv-border);border-radius:10px;padding:3px;}
 		.gvsr-jdate-group select{
@@ -4752,15 +4944,7 @@ function gv_sr_render_project_form( $project ) {
 
 			<div class="gvsr-grid-2">
 				<label>اتصال به کاربر سایت (اختیاری — پیش‌فرض کاربری که گزارش‌های این پروژه به آن نمایش داده می‌شود)
-					<?php
-					wp_dropdown_users( array(
-						'name'              => 'user_id',
-						'show_option_none'  => '— بدون اتصال —',
-						'option_none_value' => 0,
-						'selected'          => $is_edit ? (int) $project->user_id : 0,
-						'class'             => 'gvsr-select',
-					) );
-					?>
+					<?php echo gv_sr_render_user_search_select( 'user_id', $is_edit ? (int) $project->user_id : 0 ); ?>
 				</label>
 				<label>مسئول پروژه
 					<select name="manager_employee_id" class="gvsr-select">
