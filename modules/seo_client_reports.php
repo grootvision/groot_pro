@@ -451,7 +451,7 @@ function gv_sr_jalali_select_fields( $name, $mysql_date = '', $compact = false )
 /** یک فیلد جست‌وجوی کاربر سایت (به‌جای دراپ‌داون طولانی wp_dropdown_users) */
 function gv_sr_render_user_search_select( $name, $selected_id = 0 ) {
 	$selected_id = (int) $selected_id;
-	$users = get_users( array( 'fields' => array( 'ID', 'display_name', 'user_login' ), 'orderby' => 'display_name', 'number' => 2000 ) );
+	$users = get_users( array( 'fields' => array( 'ID', 'display_name', 'user_login' ), 'orderby' => 'display_name', 'number' => 2000, 'blog_id' => 0 ) );
 
 	$options        = array();
 	$selected_label = '— بدون اتصال —';
