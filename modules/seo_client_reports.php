@@ -2562,7 +2562,6 @@ function gv_sr_render_top_bar() {
 function gv_sr_render_global_scripts() {
 	?>
 	<script>
-		<script>
 	document.addEventListener('input', function (e) {
 		if (!e.target.classList || !e.target.classList.contains('gvsr-user-search-input')) { return; }
 		var wrap = e.target.closest('.gvsr-user-search');
@@ -2573,7 +2572,7 @@ function gv_sr_render_global_scripts() {
 		var match = options.find(function (o) { return o.label === e.target.value; });
 		if (match) { hidden.value = match.id; }
 	});
-	</script>
+
 	document.addEventListener('keydown', function (e) {
 		if (e.key !== 'Enter') { return; }
 		var el = e.target;
@@ -2856,26 +2855,49 @@ function gv_sr_render_quick_report_tab() {
 	if ( isset( $_GET['edit_log'] ) ) {
 		$maybe = gv_sr_get_timelog( (int) $_GET['edit_log'] );
 		if ( $maybe && (int) $maybe->employee_id === (int) $emp->id ) {
-			$editing       = $maybe;
-			global $wpdb;
-			$editing_tasks = $wpdb->get_results( $wpdb->prepare( // phpcs:ignore
-				'SELECT * FROM ' . $wpdb->prefix . 'gv_sr_tasks WHERE source_timelog_id = %d ORDER BY id ASC',
-				(int) $editing->id
-			) );
+			$editing = $maybe;
 		}
 	}
 
 	/* اگر از لیست «گزارش‌های مشتری» با report_id به این‌جا آمده‌ایم، همان
-	   گزارش دقیق را پیدا کن تا فرم روی همان گزارش (نه گزارش ماه جاری) باز شود. */
+	   گزارش دقیق را پیدا کن — صرف‌نظر از اینکه کارکرد مشخصی هم انتخاب شده
+	   باشد یا نه — تا وضعیت/کاربر متصل/خلاصه و بقیه‌ی فیلدهای گزارش همیشه
+	   از همان گزارش خوانده شوند. */
 	$editing_report = null;
-	if ( ! $editing && isset( $_GET['report_id'] ) ) {
+	if ( isset( $_GET['report_id'] ) ) {
 		$maybe_report = gv_sr_get_report( (int) $_GET['report_id'] );
 		if ( $maybe_report && (int) $maybe_report->project_id > 0 ) {
 			$editing_report = $maybe_report;
-			$rp = gv_sr_get_project( (int) $maybe_report->project_id );
-			if ( $rp && ! in_array( (int) $rp->id, wp_list_pluck( $my_projects, 'id' ), true ) ) {
-				$my_projects[] = $rp;
-			}
+		}
+	} elseif ( $editing && (int) $editing->report_id > 0 ) {
+		$editing_report = gv_sr_get_report( (int) $editing->report_id );
+	}
+
+	/* اگر مستقیم با report_id آمده‌ایم و هنوز کارکردِ مشخصی برای ویرایش
+	   انتخاب نشده، آخرین کارکردِ خودِ همین کارمند در این گزارش را به‌طور
+	   خودکار انتخاب کن — دقیقاً مثل زمانی که اولین‌بار ثبت شد: با همان
+	   تاریخ، همان ساعت شروع/پایان و همان فعالیت‌ها. */
+	if ( ! $editing && $editing_report ) {
+		global $wpdb;
+		$auto_log = $wpdb->get_row( $wpdb->prepare( // phpcs:ignore
+			"SELECT * FROM {$wpdb->prefix}gv_sr_timelogs WHERE report_id = %d AND employee_id = %d ORDER BY id DESC LIMIT 1",
+			(int) $editing_report->id, (int) $emp->id
+		) );
+		if ( $auto_log ) { $editing = $auto_log; }
+	}
+
+	if ( $editing ) {
+		global $wpdb;
+		$editing_tasks = $wpdb->get_results( $wpdb->prepare( // phpcs:ignore
+			'SELECT * FROM ' . $wpdb->prefix . 'gv_sr_tasks WHERE source_timelog_id = %d ORDER BY id ASC',
+			(int) $editing->id
+		) );
+	}
+
+	if ( $editing_report ) {
+		$rp = gv_sr_get_project( (int) $editing_report->project_id );
+		if ( $rp && ! in_array( (int) $rp->id, wp_list_pluck( $my_projects, 'id' ), true ) ) {
+			$my_projects[] = $rp;
 		}
 	}
 
@@ -2958,13 +2980,25 @@ function gv_sr_render_quick_report_tab() {
 	$task_types          = gv_sr_task_types();
 	$existing_keywords   = $peek_report ? gv_sr_get_keywords( $peek_report->id ) : array();
 	$existing_growth     = $peek_report ? gv_sr_get_growth( $peek_report->id ) : array();
-	$existing_tasks_list = $peek_report ? gv_sr_get_tasks( $peek_report->id, 'work_date', 'DESC' ) : array();
+
+	/* فعالیت‌های گزارش که به کارکردِ در حال ویرایشِ فعلی تعلق ندارند (یعنی
+	   از یک تاریخ/ساعتِ دیگر، یا از یک همکارِ دیگر ثبت شده‌اند) — این‌ها در
+	   فرم اصلی پایین نیستند، پس جدا نمایش داده می‌شوند تا با فعالیت‌های
+	   داخل فرم قاطی/تکراری نشوند. */
+	$existing_tasks_list = array();
+	if ( $peek_report ) {
+		$current_log_id = $editing ? (int) $editing->id : 0;
+		foreach ( gv_sr_get_tasks( $peek_report->id, 'work_date', 'DESC' ) as $ot ) {
+			if ( $current_log_id > 0 && (int) $ot->source_timelog_id === $current_log_id ) { continue; }
+			$existing_tasks_list[] = $ot;
+		}
+	}
 	?>
 	<div class="gvsr-quicklog-wrap" style="grid-template-columns:1fr 220px;">
 		<div>
 			<?php if ( ! empty( $existing_tasks_list ) ) : ?>
 			<div class="gvsr-report-card" style="margin-bottom:14px;">
-				<h3 style="font-size:13px;">🗂️ فعالیت‌های قبلاً ثبت‌شده در این گزارش</h3>
+				<h3 style="font-size:13px;">🗂️ سایر فعالیت‌های این گزارش (از تاریخ/کارکردهای دیگر)</h3>
 				<div class="gvsr-table-wrap" style="max-width:100%;">
 					<table class="gvsr-table">
 						<thead><tr><th>تاریخ</th><th>نوع</th><th>توضیح</th><th>ساعت</th><th>عملیات</th></tr></thead>
@@ -2987,22 +3021,29 @@ function gv_sr_render_quick_report_tab() {
 						</tbody>
 					</table>
 				</div>
-				<p class="gvsr-hint-inline">برای ویرایش یک فعالیت، روی «ویرایش» همان ردیف بزنید تا فرم زیر برای همان کارکرد باز شود (فقط اگر خودتان آن را ثبت کرده باشید).</p>
+				<p class="gvsr-hint-inline">این‌ها بخشی از یک تاریخ/ساعتِ دیگر در همین گزارش هستند (فرم بالا فقط یکی از کارکردها را نشان می‌دهد). برای ویرایش هرکدام، روی «ویرایش» بزنید تا فرم بالا برای همان کارکرد بازتنظیم شود — فقط اگر خودتان آن را ثبت کرده باشید.</p>
 			</div>
 			<?php endif; ?>
 
 			<div class="gvsr-report-card gvsr-quicklog-card">
 				<h3><?php
-					if ( $editing ) {
-						echo '✏️ ویرایش گزارش ثبت‌شده';
-					} elseif ( $editing_report ) {
+					if ( $editing_report ) {
 						echo '✏️ ویرایش گزارش: ' . esc_html( gv_sr_client_safe_report_label( $editing_report ) );
+					} elseif ( $editing ) {
+						echo '✏️ ویرایش کارکردِ ثبت‌شده';
 					} else {
 						echo '⚡ ثبت گزارش جدید';
 					}
 				?></h3>
-				<?php if ( $editing_report && ! $editing ) : ?>
-					<p class="gvsr-hint-inline" style="margin-top:-6px;margin-bottom:14px;">در حال ویرایش گزارشِ <b><?php echo esc_html( $editing_report->client_name ); ?></b> برای بازه‌ی <b><?php echo esc_html( gv_sr_jalali_numeric( $editing_report->period_start ) . ' تا ' . gv_sr_jalali_numeric( $editing_report->period_end ) ); ?></b> — هر فعالیت جدیدی که ثبت کنید به همین گزارش اضافه می‌شود.</p>
+				<?php if ( $editing_report ) : ?>
+					<p class="gvsr-hint-inline" style="margin-top:-6px;margin-bottom:14px;">
+						در حال ویرایش گزارشِ <b><?php echo esc_html( $editing_report->client_name ); ?></b> برای بازه‌ی <b><?php echo esc_html( gv_sr_jalali_numeric( $editing_report->period_start ) . ' تا ' . gv_sr_jalali_numeric( $editing_report->period_end ) ); ?></b>.
+						<?php if ( $editing ) : ?>
+							تمام مقادیر پایین (تاریخ، ساعت، فعالیت‌ها، کلمات کلیدی، رشد، وضعیت انتشار و کاربر متصل) از همان چیزی که قبلاً ثبت شده پر شده — هرچه لازم است ویرایش کنید و دوباره ذخیره بزنید.
+						<?php else : ?>
+							فعالیتی که خودتان برای این گزارش ثبت کرده باشید پیدا نشد؛ بقیه‌ی فیلدها (وضعیت/کاربر/خلاصه) از گزارش خوانده شده، ولی فعالیت این فرم به‌صورت یک ردیف تازه اضافه می‌شود.
+						<?php endif; ?>
+					</p>
 				<?php endif; ?>
 
 				<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" class="gvsr-quicklog-form" id="gvsr-quicklog-form">
