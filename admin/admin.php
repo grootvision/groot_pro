@@ -527,6 +527,26 @@ function gv_hub_get_items() {
 			'status_option' => 'gv_github_updater_settings',
 			'status_key'    => 'enabled',
 		),
+			array(
+			'title'         => 'مدیریت فایل‌های چندرسانه‌ای',
+			'desc'          => 'لیست تمام عکس‌ها، ویدیوها و فایل‌های سایت، مشخص‌کردن فایل‌های بدون استفاده، محل دقیق استفاده هر فایل و حجم قابل سورت.',
+			'icon'          => '🖼️',
+			'page'          => 'gv-media-manager',
+			'color'         => '#4338ca',
+			'category'      => 'manage',
+			'status_option' => null,
+			'status_key'    => null,
+		),
+		array(
+			'title'         => 'کادر و دکمه شورت‌کد',
+			'desc'          => 'کادرهای رنگی مینیمال (اخطار، نکته، موفقیت، لینک به مقاله و...) و دکمه‌های آماده که با یک شورت‌کد ساده هر جای سایت قابل استفاده‌اند.',
+			'icon'          => '🧩',
+			'page'          => 'gv-shortcode-boxes',
+			'color'         => '#7c3aed',
+			'category'      => 'design',
+			'status_option' => null,
+			'status_key'    => null,
+		),
 	);
 }
 
