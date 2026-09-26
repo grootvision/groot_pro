@@ -32,7 +32,7 @@ if ( ! defined( 'ABSPATH' ) ) { exit; }
 
 define( 'GV_AUDIT_OPT',          'gv_seo_audit_settings' );
 define( 'GV_AUDIT_STATE_OPT',    'gv_seo_audit_state' );      // وضعیت لحظه‌ای اسکن (صف، فاز، پیشرفت)
-define( 'GV_AUDIT_DB_VERSION',   '1.0' );
+define( 'GV_AUDIT_DB_VERSION',   '1.1' );
 define( 'GV_AUDIT_NONCE',        'gv_audit_nonce_action' );
 define( 'GV_AUDIT_PAGE_SLUG',    'gv-seo-audit' );
 
@@ -88,6 +88,7 @@ function gv_audit_maybe_install_db() {
 		severity VARCHAR(10) NOT NULL DEFAULT 'notice',
 		message TEXT NULL,
 		detail TEXT NULL,
+		location VARCHAR(500) NOT NULL DEFAULT '',
 		created_at DATETIME NOT NULL,
 		PRIMARY KEY  (id),
 		KEY post_id (post_id),
@@ -315,6 +316,64 @@ function gv_audit_check_url_structure( $url ) {
 }
 
 /**
+ * محل تقریبی یک المنت را در ساختار صفحه مشخص می‌کند: هم یک «دسته‌ی» کلی
+ * (هدر/منو/محتوای اصلی/ساید‌بار/فوتر/فرم/سایر) و هم یک مسیرِ خلاصه از
+ * تگ‌ها/کلاس‌ها تا آن المنت (برای پیداکردنش در کد ساده‌تر باشد).
+ * خروجی: array( 'zone' => 'برچسبِ فارسیِ ناحیه', 'path' => 'header > div.site-header > h1' )
+ */
+function gv_audit_node_location( $node ) {
+	$zones = array(
+		'header' => '🔝 هدر سایت (header)',
+		'nav'    => '📑 منوی ناوبری (nav)',
+		'footer' => '🔻 فوتر (footer)',
+		'aside'  => '📌 ساید‌بار/ویجت (aside)',
+		'main'   => '📄 محتوای اصلی (main)',
+		'article'=> '📄 محتوای اصلی (article)',
+		'form'   => '📝 فرم (form)',
+	);
+
+	$path  = array();
+	$zone  = '';
+	$n     = $node;
+	$depth = 0;
+
+	while ( $n && XML_ELEMENT_NODE === $n->nodeType && $depth < 25 ) {
+		$tag = strtolower( $n->nodeName );
+		$seg = $tag;
+
+		$id = $n->hasAttribute( 'id' ) ? trim( $n->getAttribute( 'id' ) ) : '';
+		$cls = $n->hasAttribute( 'class' ) ? trim( $n->getAttribute( 'class' ) ) : '';
+
+		if ( '' !== $id ) {
+			$seg .= '#' . $id;
+		} elseif ( '' !== $cls ) {
+			$first = preg_split( '/\s+/', $cls )[0] ?? '';
+			if ( '' !== $first ) { $seg .= '.' . $first; }
+		}
+
+		array_unshift( $path, $seg );
+
+		if ( '' === $zone && isset( $zones[ $tag ] ) ) {
+			$zone = $zones[ $tag ];
+		}
+
+		$n = $n->parentNode;
+		$depth++;
+	}
+
+	return array(
+		'zone' => $zone ?: '📄 سایر بخش‌های صفحه',
+		'path' => implode( ' › ', $path ),
+	);
+}
+
+/** رشته‌ی نمایشی محل را از خروجی gv_audit_node_location می‌سازد. */
+function gv_audit_location_string( $loc ) {
+	if ( empty( $loc['path'] ) ) { return ''; }
+	return $loc['zone'] . ' — ' . $loc['path'];
+}
+
+/**
  * یک URL را دانلود و کامل آنالیز می‌کند.
  * خروجی: array( 'issues'=>[], 'word_count'=>, 'title'=>, 'title_len'=>, 'desc'=>, 'load_time'=>, 'links'=>[], 'assets'=>[], 'h1_count'=>, 'score'=> )
  */
@@ -374,11 +433,11 @@ function gv_audit_scan_page( $item, $settings, &$state ) {
 			$title_len  = mb_strlen( $page_title );
 		}
 		if ( '' === $page_title ) {
-			$issues[] = array( 'category' => 'title_tag', 'severity' => 'error', 'message' => 'این صفحه هیچ تگ Title ندارد.' );
+			$issues[] = array( 'category' => 'title_tag', 'severity' => 'error', 'message' => 'این صفحه هیچ تگ Title ندارد.', 'location' => '📄 داخل <head> سند' );
 		} elseif ( $title_len < $settings['title_min'] ) {
-			$issues[] = array( 'category' => 'title_tag', 'severity' => 'warning', 'message' => "طول تگ Title ({$title_len} کاراکتر) کوتاه‌تر از حد پیشنهادی ({$settings['title_min']} تا {$settings['title_max']}) است.", 'detail' => $page_title );
+			$issues[] = array( 'category' => 'title_tag', 'severity' => 'warning', 'message' => "طول تگ Title ({$title_len} کاراکتر) کوتاه‌تر از حد پیشنهادی ({$settings['title_min']} تا {$settings['title_max']}) است.", 'detail' => $page_title, 'location' => '📄 داخل <head> سند — تگ <title>' );
 		} elseif ( $title_len > $settings['title_max'] ) {
-			$issues[] = array( 'category' => 'title_tag', 'severity' => 'warning', 'message' => "طول تگ Title ({$title_len} کاراکتر) بلندتر از حد پیشنهادی ({$settings['title_min']} تا {$settings['title_max']}) است و ممکن است در گوگل بریده شود.", 'detail' => $page_title );
+			$issues[] = array( 'category' => 'title_tag', 'severity' => 'warning', 'message' => "طول تگ Title ({$title_len} کاراکتر) بلندتر از حد پیشنهادی ({$settings['title_min']} تا {$settings['title_max']}) است و ممکن است در گوگل بریده شود.", 'detail' => $page_title, 'location' => '📄 داخل <head> سند — تگ <title>' );
 		}
 
 		// متا دیسکریپشن
@@ -388,34 +447,51 @@ function gv_audit_scan_page( $item, $settings, &$state ) {
 		}
 		$desc_len = mb_strlen( $desc );
 		if ( '' === $desc ) {
-			$issues[] = array( 'category' => 'meta_desc', 'severity' => 'error', 'message' => 'این صفحه متا توضیحات (Meta Description) ندارد.' );
+			$issues[] = array( 'category' => 'meta_desc', 'severity' => 'error', 'message' => 'این صفحه متا توضیحات (Meta Description) ندارد.', 'location' => '📄 داخل <head> سند' );
 		} elseif ( $desc_len < $settings['desc_min'] ) {
-			$issues[] = array( 'category' => 'meta_desc', 'severity' => 'warning', 'message' => "طول متا توضیحات ({$desc_len} کاراکتر) کوتاه‌تر از حد پیشنهادی ({$settings['desc_min']} تا {$settings['desc_max']}) است.", 'detail' => $desc );
+			$issues[] = array( 'category' => 'meta_desc', 'severity' => 'warning', 'message' => "طول متا توضیحات ({$desc_len} کاراکتر) کوتاه‌تر از حد پیشنهادی ({$settings['desc_min']} تا {$settings['desc_max']}) است.", 'detail' => $desc, 'location' => '📄 داخل <head> سند — <meta name="description">' );
 		} elseif ( $desc_len > $settings['desc_max'] ) {
-			$issues[] = array( 'category' => 'meta_desc', 'severity' => 'warning', 'message' => "طول متا توضیحات ({$desc_len} کاراکتر) بلندتر از حد پیشنهادی است و ممکن است در نتایج گوگل بریده شود.", 'detail' => $desc );
+			$issues[] = array( 'category' => 'meta_desc', 'severity' => 'warning', 'message' => "طول متا توضیحات ({$desc_len} کاراکتر) بلندتر از حد پیشنهادی است و ممکن است در نتایج گوگل بریده شود.", 'detail' => $desc, 'location' => '📄 داخل <head> سند — <meta name="description">' );
 		}
 
 		// Canonical
 		$canon = $xpath->query( '//link[@rel="canonical"]/@href' );
 		if ( 0 === $canon->length ) {
-			$issues[] = array( 'category' => 'canonical', 'severity' => 'notice', 'message' => 'لینک Canonical برای این صفحه تنظیم نشده است.' );
+			$issues[] = array( 'category' => 'canonical', 'severity' => 'notice', 'message' => 'لینک Canonical برای این صفحه تنظیم نشده است.', 'location' => '📄 داخل <head> سند' );
 		}
 
 		// Robots noindex
 		$robots = $xpath->query( '//meta[translate(@name,"ROBOTS","robots")="robots"]/@content' );
 		if ( $robots->length > 0 && false !== stripos( $robots->item( 0 )->nodeValue, 'noindex' ) ) {
-			$issues[] = array( 'category' => 'robots', 'severity' => 'notice', 'message' => 'این صفحه با noindex علامت‌گذاری شده و گوگل آن را در نتایج نشان نمی‌دهد (اگر عمدی نیست، بررسی کنید).' );
+			$issues[] = array( 'category' => 'robots', 'severity' => 'notice', 'message' => 'این صفحه با noindex علامت‌گذاری شده و گوگل آن را در نتایج نشان نمی‌دهد (اگر عمدی نیست، بررسی کنید).', 'location' => '📄 داخل <head> سند — <meta name="robots">' );
 		}
 
-		// H1
-		$h1_nodes = $xpath->query( '//h1[not(ancestor::header) and not(ancestor::nav) and not(ancestor::footer)]' );
+		// H1 — کل صفحه بررسی می‌شود (خیلی از قالب‌ها عنوان اصلی محتوا را داخل
+		// <header class="entry-header"> می‌گذارند؛ اگر اینجا فقط بیرون از
+		// header/nav/footer چک می‌شد، همین H1های واقعی به اشتباه «موجود نیست»
+		// گزارش می‌شدند. پس کل سند از جمله هدر/فوتر تم هم بررسی می‌شود).
+		$h1_nodes = $xpath->query( '//h1' );
 		$h1_count = $h1_nodes->length;
 		if ( 0 === $h1_count ) {
-			$issues[] = array( 'category' => 'h1', 'severity' => 'error', 'message' => 'این صفحه هیچ تگ H1 ندارد.' );
+			$issues[] = array( 'category' => 'h1', 'severity' => 'error', 'message' => 'این صفحه هیچ تگ H1 ندارد (کل کد صفحه از جمله هدر/فوتر قالب بررسی شد).' );
 		} elseif ( $h1_count > 1 ) {
 			$sample = array();
-			foreach ( $h1_nodes as $n ) { $sample[] = trim( $n->textContent ); }
-			$issues[] = array( 'category' => 'h1', 'severity' => 'warning', 'message' => "این صفحه {$h1_count} تگ H1 دارد؛ باید فقط یک H1 در هر صفحه باشد.", 'detail' => implode( ' | ', array_slice( $sample, 0, 5 ) ) );
+			$locs   = array();
+			foreach ( $h1_nodes as $idx => $n ) {
+				$text = trim( $n->textContent );
+				$sample[] = $text;
+				if ( $idx < 5 ) {
+					$loc = gv_audit_node_location( $n );
+					$locs[] = ( $idx + 1 ) . ') ' . gv_audit_location_string( $loc ) . ( '' !== $text ? ' — متن: «' . mb_substr( $text, 0, 40 ) . '»' : '' );
+				}
+			}
+			$issues[] = array(
+				'category' => 'h1',
+				'severity' => 'warning',
+				'message'  => "این صفحه {$h1_count} تگ H1 دارد؛ باید فقط یک H1 در هر صفحه باشد.",
+				'detail'   => implode( ' | ', array_slice( $sample, 0, 5 ) ),
+				'location' => implode( "\n", $locs ),
+			);
 		}
 
 		// تعداد کلمات محتوا
@@ -439,19 +515,27 @@ function gv_audit_scan_page( $item, $settings, &$state ) {
 		// تصاویر بدون Alt
 		$img_nodes = $xpath->query( '//img' );
 		$missing_alt = array();
+		$missing_alt_locs = array();
+		$missing_alt_total = 0;
 		foreach ( $img_nodes as $img ) {
 			$alt = $img->getAttribute( 'alt' );
 			if ( '' === trim( $alt ) ) {
-				$src = $img->getAttribute( 'src' );
-				if ( count( $missing_alt ) < 5 ) { $missing_alt[] = $src; }
+				$missing_alt_total++;
+				if ( count( $missing_alt ) < 5 ) {
+					$src = $img->getAttribute( 'src' );
+					$missing_alt[] = $src;
+					$loc = gv_audit_node_location( $img );
+					$missing_alt_locs[] = gv_audit_location_string( $loc ) . ' — src: ' . $src;
+				}
 			}
 		}
 		if ( ! empty( $missing_alt ) ) {
 			$issues[] = array(
 				'category' => 'images',
 				'severity' => 'warning',
-				'message'  => count( $missing_alt ) . ( $img_nodes->length > count( $missing_alt ) ? '+' : '' ) . ' تصویر بدون متن جایگزین (Alt) در این صفحه پیدا شد.',
+				'message'  => $missing_alt_total . ( $img_nodes->length > count( $missing_alt ) ? '+' : '' ) . ' تصویر بدون متن جایگزین (Alt) در این صفحه پیدا شد.',
 				'detail'   => implode( "\n", $missing_alt ),
+				'location' => implode( "\n", $missing_alt_locs ),
 			);
 		}
 
@@ -535,9 +619,10 @@ function gv_audit_insert_issue( $post_id, $post_title, $url, $issue ) {
 			'severity'   => sanitize_key( $issue['severity'] ),
 			'message'    => wp_strip_all_tags( $issue['message'] ),
 			'detail'     => isset( $issue['detail'] ) ? wp_strip_all_tags( $issue['detail'] ) : '',
+			'location'   => isset( $issue['location'] ) ? wp_strip_all_tags( $issue['location'] ) : '',
 			'created_at' => current_time( 'mysql' ),
 		),
-		array( '%d', '%s', '%s', '%s', '%s', '%s', '%s', '%s' )
+		array( '%d', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s' )
 	);
 }
 
@@ -780,6 +865,55 @@ function gv_audit_count_by( $field ) {
 	return $wpdb->get_results( "SELECT {$field} AS k, COUNT(*) AS c FROM " . gv_audit_table() . " GROUP BY {$field} ORDER BY c DESC" );
 }
 
+/**
+ * مشکلات را به‌ازای هر صفحه گروه‌بندی و خلاصه می‌کند (برای نمای «گروه‌بندی‌شده»).
+ * خروجی: آرایه‌ای از صفحات، هرکدام شامل url, post_id, post_title, counts{error,warning,notice}, total
+ */
+function gv_audit_get_grouped_pages( $args = array() ) {
+	global $wpdb;
+	$where  = array( '1=1' );
+	$params = array();
+
+	if ( ! empty( $args['severity'] ) ) { $where[] = 'severity = %s'; $params[] = $args['severity']; }
+	if ( ! empty( $args['category'] ) ) { $where[] = 'category = %s'; $params[] = $args['category']; }
+	if ( ! empty( $args['search'] ) )   { $where[] = '(post_title LIKE %s OR url LIKE %s OR message LIKE %s)'; $like = '%' . $wpdb->esc_like( $args['search'] ) . '%'; $params[] = $like; $params[] = $like; $params[] = $like; }
+
+	$sql = "SELECT url, MAX(post_id) AS post_id, MAX(post_title) AS post_title,
+			SUM(CASE WHEN severity='error' THEN 1 ELSE 0 END) AS c_error,
+			SUM(CASE WHEN severity='warning' THEN 1 ELSE 0 END) AS c_warning,
+			SUM(CASE WHEN severity='notice' THEN 1 ELSE 0 END) AS c_notice,
+			COUNT(*) AS c_total
+		FROM " . gv_audit_table() . '
+		WHERE ' . implode( ' AND ', $where ) . '
+		GROUP BY url
+		ORDER BY c_error DESC, c_warning DESC, c_notice DESC
+		LIMIT 300';
+
+	if ( ! empty( $params ) ) {
+		return $wpdb->get_results( $wpdb->prepare( $sql, $params ) ); // phpcs:ignore
+	}
+	return $wpdb->get_results( $sql );
+}
+
+function gv_audit_category_icon( $cat ) {
+	$icons = array(
+		'h1'          => '🔠',
+		'words'       => '📝',
+		'title_tag'   => '🏷️',
+		'meta_desc'   => '📋',
+		'url'         => '🔗',
+		'images'      => '🖼️',
+		'canonical'   => '📌',
+		'robots'      => '🚫',
+		'speed'       => '⚡',
+		'broken_link' => '⛓️‍💥',
+		'asset'       => '📦',
+		'duplicate'   => '🧬',
+		'fetch'       => '❌',
+	);
+	return $icons[ $cat ] ?? '•';
+}
+
 function gv_audit_category_label( $cat ) {
 	$labels = array(
 		'h1'          => 'تگ H1',
@@ -840,11 +974,65 @@ function gv_audit_render_admin_page() {
 			.gvaudit-card b{font-size:26px;display:block;}
 			.gvaudit-progress-wrap{background:#eef0f2;border-radius:8px;height:22px;overflow:hidden;max-width:640px;margin:10px 0;}
 			.gvaudit-progress-bar{background:linear-gradient(90deg,#16a34a,#22c55e);height:100%;width:0%;transition:width .3s;}
-			.gvaudit-table{width:100%;border-collapse:collapse;background:#fff;}
-			.gvaudit-table th,.gvaudit-table td{padding:9px 10px;border-bottom:1px solid #eee;font-size:13px;text-align:right;vertical-align:top;}
-			.gvaudit-badge{display:inline-block;padding:2px 9px;border-radius:20px;color:#fff;font-size:11.5px;}
-			.gvaudit-filters{margin:14px 0;display:flex;gap:8px;flex-wrap:wrap;}
 			.gvaudit-note{background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:10px 14px;font-size:13px;color:#1e3a8a;max-width:760px;}
+
+			/* ---------- طراحی جدید تب «لیست مشکلات» ---------- */
+			.gvaudit-toolbar{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;margin:16px 0;}
+			.gvaudit-chips{display:flex;gap:8px;flex-wrap:wrap;}
+			.gvaudit-chip{display:inline-flex;align-items:center;gap:6px;padding:7px 14px;border-radius:999px;background:#fff;border:1.5px solid #e2e2e2;font-size:13px;color:#374151;text-decoration:none;cursor:pointer;transition:.15s;}
+			.gvaudit-chip:hover{border-color:#94a3b8;}
+			.gvaudit-chip.is-active{border-color:currentColor;background:currentColor;color:#fff !important;font-weight:600;}
+			.gvaudit-chip .n{background:rgba(0,0,0,.08);border-radius:999px;padding:0 7px;font-size:11.5px;}
+			.gvaudit-chip.is-active .n{background:rgba(255,255,255,.25);}
+			.gvaudit-chip-error{color:#dc2626;}
+			.gvaudit-chip-warning{color:#d97706;}
+			.gvaudit-chip-notice{color:#2563eb;}
+			.gvaudit-chip-all{color:#334155;}
+			.gvaudit-viewswitch{display:inline-flex;background:#eef0f2;border-radius:9px;padding:3px;}
+			.gvaudit-viewswitch a{padding:6px 14px;font-size:12.5px;border-radius:7px;text-decoration:none;color:#475569;}
+			.gvaudit-viewswitch a.is-active{background:#fff;color:#111827;box-shadow:0 1px 2px rgba(0,0,0,.08);font-weight:600;}
+			.gvaudit-searchrow{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:14px;}
+			.gvaudit-searchrow select,.gvaudit-searchrow input[type=text]{border-radius:8px;border:1px solid #d7dade;padding:7px 10px;font-size:13px;}
+			.gvaudit-searchrow input[type=text]{min-width:260px;}
+
+			.gvaudit-card-box{background:#fff;border:1px solid #e7e8ea;border-radius:14px;box-shadow:0 1px 2px rgba(16,24,40,.04);overflow:hidden;}
+
+			/* --- نمای «لیست تخت» با هدر قابل‌کلیک برای سورت --- */
+			.gvaudit-table{width:100%;border-collapse:collapse;background:#fff;}
+			.gvaudit-table thead th{position:sticky;top:32px;background:#f8fafc;padding:11px 12px;font-size:12.5px;color:#475569;text-align:right;border-bottom:2px solid #e5e7eb;cursor:pointer;-webkit-user-select:none;user-select:none;white-space:nowrap;}
+			.gvaudit-table thead th:hover{color:#111827;background:#f1f5f9;}
+			.gvaudit-table thead th.no-sort{cursor:default;}
+			.gvaudit-table thead th.no-sort:hover{background:#f8fafc;color:#475569;}
+			.gvaudit-sort-ic{display:inline-block;width:12px;font-size:10px;color:#94a3b8;}
+			.gvaudit-table tbody tr{border-bottom:1px solid #f1f2f4;transition:background .1s;}
+			.gvaudit-table tbody tr:hover{background:#fafbfc;}
+			.gvaudit-table td{padding:11px 12px;font-size:13px;vertical-align:top;}
+			.gvaudit-table td.gv-sev-cell{border-right:4px solid transparent;}
+			.gvaudit-page-title{font-weight:600;color:#111827;text-decoration:none;}
+			.gvaudit-page-title:hover{color:#16a34a;}
+			.gvaudit-url-small{display:block;font-size:11px;color:#94a3b8;margin-top:2px;direction:ltr;text-align:right;}
+			.gvaudit-edit-link{font-size:11.5px;color:#2563eb;text-decoration:none;margin-inline-start:6px;}
+			.gvaudit-cat-pill{display:inline-flex;align-items:center;gap:5px;background:#f3f4f6;border-radius:7px;padding:3px 9px;font-size:12px;color:#374151;white-space:nowrap;}
+			.gvaudit-msg{color:#1f2937;}
+			.gvaudit-detail{display:block;margin-top:5px;font-size:11.5px;color:#6b7280;background:#f8fafc;border:1px solid #eef0f2;border-radius:6px;padding:5px 8px;white-space:pre-line;direction:ltr;text-align:right;}
+			.gvaudit-location{display:block;margin-top:5px;font-size:11.5px;color:#7c5b00;background:#fffbeb;border:1px solid #fde9c0;border-radius:6px;padding:5px 8px;white-space:pre-line;}
+			.gvaudit-grouptoolbar{display:flex;gap:8px;margin-bottom:10px;}
+			.gvaudit-badge{display:inline-block;padding:3px 11px;border-radius:20px;color:#fff;font-size:11.5px;font-weight:600;}
+
+			/* --- نمای «گروه‌بندی‌شده بر اساس صفحه» --- */
+			.gvaudit-group{border-bottom:1px solid #f1f2f4;}
+			.gvaudit-group:last-child{border-bottom:none;}
+			.gvaudit-group summary{list-style:none;cursor:pointer;padding:14px 16px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;}
+			.gvaudit-group summary::-webkit-details-marker{display:none;}
+			.gvaudit-group summary:hover{background:#fafbfc;}
+			.gvaudit-group-arrow{transition:transform .15s;color:#9ca3af;font-size:11px;}
+			.gvaudit-group[open] .gvaudit-group-arrow{transform:rotate(90deg);}
+			.gvaudit-group-title{font-weight:600;color:#111827;}
+			.gvaudit-group-counts{display:flex;gap:6px;margin-inline-start:auto;}
+			.gvaudit-mini-badge{display:inline-flex;align-items:center;gap:4px;border-radius:999px;padding:2px 9px;font-size:11.5px;font-weight:600;color:#fff;}
+			.gvaudit-group-body{padding:0 16px 14px 16px;}
+			.gvaudit-group-row{display:flex;gap:10px;align-items:flex-start;padding:8px 0;border-top:1px dashed #eef0f2;}
+			.gvaudit-group-row:first-child{border-top:none;}
 		</style>
 
 		<?php if ( 'dashboard' === $tab ) : ?>
@@ -878,52 +1066,141 @@ function gv_audit_render_admin_page() {
 
 		<?php elseif ( 'issues' === $tab ) : ?>
 			<?php
-			$f_sev = isset( $_GET['sev'] ) ? sanitize_key( $_GET['sev'] ) : '';
-			$f_cat = isset( $_GET['cat'] ) ? sanitize_key( $_GET['cat'] ) : '';
-			$f_q   = isset( $_GET['s'] ) ? sanitize_text_field( wp_unslash( $_GET['s'] ) ) : '';
-			$rows  = gv_audit_get_issues( array( 'severity' => $f_sev, 'category' => $f_cat, 'search' => $f_q, 'limit' => 500 ) );
+			$f_sev  = isset( $_GET['sev'] ) ? sanitize_key( $_GET['sev'] ) : '';
+			$f_cat  = isset( $_GET['cat'] ) ? sanitize_key( $_GET['cat'] ) : '';
+			$f_q    = isset( $_GET['s'] ) ? sanitize_text_field( wp_unslash( $_GET['s'] ) ) : '';
+			$f_view = isset( $_GET['view'] ) && 'flat' === $_GET['view'] ? 'flat' : 'grouped';
+
+			$base_args = array(
+				'page' => GV_AUDIT_PAGE_SLUG,
+				'tab'  => 'issues',
+				'cat'  => $f_cat,
+				's'    => $f_q,
+				'view' => $f_view,
+			);
+			$cat_rows = gv_audit_count_by( 'category' );
 			?>
-			<form method="get" class="gvaudit-filters">
+
+			<div class="gvaudit-toolbar">
+				<div class="gvaudit-chips">
+					<a class="gvaudit-chip gvaudit-chip-all <?php echo '' === $f_sev ? 'is-active' : ''; ?>" href="<?php echo esc_url( add_query_arg( array_merge( $base_args, array( 'sev' => '' ) ), admin_url( 'admin.php' ) ) ); ?>">همه <span class="n"><?php echo (int) $total_issues; ?></span></a>
+					<a class="gvaudit-chip gvaudit-chip-error <?php echo 'error' === $f_sev ? 'is-active' : ''; ?>" href="<?php echo esc_url( add_query_arg( array_merge( $base_args, array( 'sev' => 'error' ) ), admin_url( 'admin.php' ) ) ); ?>">🔴 خطا <span class="n"><?php echo (int) $sev_counts['error']; ?></span></a>
+					<a class="gvaudit-chip gvaudit-chip-warning <?php echo 'warning' === $f_sev ? 'is-active' : ''; ?>" href="<?php echo esc_url( add_query_arg( array_merge( $base_args, array( 'sev' => 'warning' ) ), admin_url( 'admin.php' ) ) ); ?>">🟠 هشدار <span class="n"><?php echo (int) $sev_counts['warning']; ?></span></a>
+					<a class="gvaudit-chip gvaudit-chip-notice <?php echo 'notice' === $f_sev ? 'is-active' : ''; ?>" href="<?php echo esc_url( add_query_arg( array_merge( $base_args, array( 'sev' => 'notice' ) ), admin_url( 'admin.php' ) ) ); ?>">🔵 توجه <span class="n"><?php echo (int) $sev_counts['notice']; ?></span></a>
+				</div>
+
+				<div class="gvaudit-viewswitch">
+					<a class="<?php echo 'grouped' === $f_view ? 'is-active' : ''; ?>" href="<?php echo esc_url( add_query_arg( array_merge( $base_args, array( 'sev' => $f_sev, 'view' => 'grouped' ) ), admin_url( 'admin.php' ) ) ); ?>">📄 گروه‌بندی بر اساس صفحه</a>
+					<a class="<?php echo 'flat' === $f_view ? 'is-active' : ''; ?>" href="<?php echo esc_url( add_query_arg( array_merge( $base_args, array( 'sev' => $f_sev, 'view' => 'flat' ) ), admin_url( 'admin.php' ) ) ); ?>">📃 لیست تخت (قابل‌سورت)</a>
+				</div>
+			</div>
+
+			<form method="get" class="gvaudit-searchrow">
 				<input type="hidden" name="page" value="<?php echo esc_attr( GV_AUDIT_PAGE_SLUG ); ?>">
 				<input type="hidden" name="tab" value="issues">
-				<select name="sev">
-					<option value="">همه شدت‌ها</option>
-					<option value="error" <?php selected( $f_sev, 'error' ); ?>>فقط خطا</option>
-					<option value="warning" <?php selected( $f_sev, 'warning' ); ?>>فقط هشدار</option>
-					<option value="notice" <?php selected( $f_sev, 'notice' ); ?>>فقط توجه</option>
-				</select>
+				<input type="hidden" name="sev" value="<?php echo esc_attr( $f_sev ); ?>">
+				<input type="hidden" name="view" value="<?php echo esc_attr( $f_view ); ?>">
 				<select name="cat">
 					<option value="">همه دسته‌ها</option>
-					<?php foreach ( gv_audit_count_by( 'category' ) as $row ) : ?>
-						<option value="<?php echo esc_attr( $row->k ); ?>" <?php selected( $f_cat, $row->k ); ?>><?php echo esc_html( gv_audit_category_label( $row->k ) ); ?> (<?php echo (int) $row->c; ?>)</option>
+					<?php foreach ( $cat_rows as $row ) : ?>
+						<option value="<?php echo esc_attr( $row->k ); ?>" <?php selected( $f_cat, $row->k ); ?>><?php echo esc_html( gv_audit_category_icon( $row->k ) . ' ' . gv_audit_category_label( $row->k ) ); ?> (<?php echo (int) $row->c; ?>)</option>
 					<?php endforeach; ?>
 				</select>
-				<input type="text" name="s" value="<?php echo esc_attr( $f_q ); ?>" placeholder="جستجو در عنوان/آدرس/پیام…" class="regular-text">
-				<button class="button">فیلتر</button>
+				<input type="text" name="s" value="<?php echo esc_attr( $f_q ); ?>" placeholder="🔎 جستجو در عنوان صفحه، آدرس یا متن مشکل…">
+				<button class="button">اعمال فیلتر</button>
+				<?php if ( $f_cat || $f_q ) : ?><a class="button" href="<?php echo esc_url( add_query_arg( array_merge( $base_args, array( 'sev' => $f_sev, 'cat' => '', 's' => '' ) ), admin_url( 'admin.php' ) ) ); ?>">پاک‌کردن فیلتر متنی</a><?php endif; ?>
 			</form>
 
-			<table class="gvaudit-table">
-				<thead><tr><th>شدت</th><th>دسته</th><th>صفحه</th><th>مشکل</th></tr></thead>
-				<tbody>
-				<?php if ( empty( $rows ) ) : ?>
-					<tr><td colspan="4">هیچ موردی یافت نشد.</td></tr>
-				<?php else : foreach ( $rows as $r ) : ?>
-					<tr>
-						<td><span class="gvaudit-badge" style="background:<?php echo esc_attr( gv_audit_severity_color( $r->severity ) ); ?>;"><?php echo esc_html( gv_audit_severity_label( $r->severity ) ); ?></span></td>
-						<td><?php echo esc_html( gv_audit_category_label( $r->category ) ); ?></td>
-						<td>
-							<a href="<?php echo esc_url( $r->url ); ?>" target="_blank" rel="noopener"><?php echo esc_html( $r->post_title ?: $r->url ); ?></a><br>
-							<code style="font-size:11px;color:#888;"><?php echo esc_html( $r->url ); ?></code>
-							<?php if ( $r->post_id ) : ?> — <a href="<?php echo esc_url( get_edit_post_link( $r->post_id ) ); ?>">ویرایش</a><?php endif; ?>
-						</td>
-						<td>
-							<?php echo esc_html( $r->message ); ?>
-							<?php if ( $r->detail ) : ?><br><code style="font-size:11.5px;color:#555;white-space:pre-line;"><?php echo esc_html( wp_trim_words( $r->detail, 30 ) ); ?></code><?php endif; ?>
-						</td>
-					</tr>
-				<?php endforeach; endif; ?>
-				</tbody>
-			</table>
+			<?php if ( 'grouped' === $f_view ) : ?>
+				<?php
+				$pages       = gv_audit_get_grouped_pages( array( 'severity' => $f_sev, 'category' => $f_cat, 'search' => $f_q ) );
+				$all_rows    = gv_audit_get_issues( array( 'severity' => $f_sev, 'category' => $f_cat, 'search' => $f_q, 'limit' => 3000 ) );
+				$issues_by_url = array();
+				foreach ( $all_rows as $r ) { $issues_by_url[ $r->url ][] = $r; }
+				?>
+				<?php if ( ! empty( $pages ) ) : ?>
+					<div class="gvaudit-grouptoolbar">
+						<button type="button" class="button" id="gvaudit-expand-all">🔽 باز کردن همه</button>
+						<button type="button" class="button" id="gvaudit-collapse-all">🔼 بستن همه</button>
+					</div>
+				<?php endif; ?>
+				<div class="gvaudit-card-box">
+					<?php if ( empty( $pages ) ) : ?>
+						<p style="padding:20px;">هیچ موردی یافت نشد.</p>
+					<?php else : foreach ( $pages as $i => $p ) :
+						$page_issues = $issues_by_url[ $p->url ] ?? array();
+					?>
+						<details class="gvaudit-group">
+							<summary>
+								<span class="gvaudit-group-arrow">▶</span>
+								<div>
+									<span class="gvaudit-group-title"><?php echo esc_html( $p->post_title ?: $p->url ); ?></span>
+									<span class="gvaudit-url-small"><?php echo esc_html( $p->url ); ?></span>
+								</div>
+								<div class="gvaudit-group-counts">
+									<?php if ( $p->c_error > 0 ) : ?><span class="gvaudit-mini-badge" style="background:#dc2626;"><?php echo (int) $p->c_error; ?> خطا</span><?php endif; ?>
+									<?php if ( $p->c_warning > 0 ) : ?><span class="gvaudit-mini-badge" style="background:#d97706;"><?php echo (int) $p->c_warning; ?> هشدار</span><?php endif; ?>
+									<?php if ( $p->c_notice > 0 ) : ?><span class="gvaudit-mini-badge" style="background:#2563eb;"><?php echo (int) $p->c_notice; ?> توجه</span><?php endif; ?>
+									<a href="<?php echo esc_url( $p->url ); ?>" target="_blank" rel="noopener" class="gvaudit-edit-link">مشاهده صفحه ↗</a>
+									<?php if ( $p->post_id ) : ?><a href="<?php echo esc_url( get_edit_post_link( $p->post_id ) ); ?>" class="gvaudit-edit-link">ویرایش ✎</a><?php endif; ?>
+								</div>
+							</summary>
+							<div class="gvaudit-group-body">
+								<?php foreach ( $page_issues as $r ) : ?>
+									<div class="gvaudit-group-row">
+										<span class="gvaudit-badge" style="background:<?php echo esc_attr( gv_audit_severity_color( $r->severity ) ); ?>;flex-shrink:0;"><?php echo esc_html( gv_audit_severity_label( $r->severity ) ); ?></span>
+										<span class="gvaudit-cat-pill" style="flex-shrink:0;"><?php echo esc_html( gv_audit_category_icon( $r->category ) ); ?> <?php echo esc_html( gv_audit_category_label( $r->category ) ); ?></span>
+										<div>
+											<span class="gvaudit-msg"><?php echo esc_html( $r->message ); ?></span>
+											<?php if ( ! empty( $r->location ) ) : ?><span class="gvaudit-location">📍 محل تقریبی: <?php echo esc_html( $r->location ); ?></span><?php endif; ?>
+											<?php if ( $r->detail ) : ?><span class="gvaudit-detail"><?php echo esc_html( wp_trim_words( $r->detail, 30 ) ); ?></span><?php endif; ?>
+										</div>
+									</div>
+								<?php endforeach; ?>
+							</div>
+						</details>
+					<?php endforeach; endif; ?>
+				</div>
+
+			<?php else : /* نمای «لیست تخت» قابل‌سورت */ ?>
+				<?php $rows = gv_audit_get_issues( array( 'severity' => $f_sev, 'category' => $f_cat, 'search' => $f_q, 'limit' => 500 ) ); ?>
+				<div class="gvaudit-card-box">
+					<table class="gvaudit-table" id="gvaudit-issues-table">
+						<thead>
+							<tr>
+								<th data-sort="sev" data-type="num">شدت <span class="gvaudit-sort-ic"></span></th>
+								<th data-sort="cat" data-type="text">دسته <span class="gvaudit-sort-ic"></span></th>
+								<th data-sort="page" data-type="text">صفحه <span class="gvaudit-sort-ic"></span></th>
+								<th class="no-sort">مشکل</th>
+							</tr>
+						</thead>
+						<tbody>
+						<?php if ( empty( $rows ) ) : ?>
+							<tr><td colspan="4" style="padding:20px;">هیچ موردی یافت نشد.</td></tr>
+						<?php else :
+							$sev_rank = array( 'error' => 0, 'warning' => 1, 'notice' => 2 );
+							foreach ( $rows as $r ) : ?>
+							<tr data-sev="<?php echo esc_attr( $sev_rank[ $r->severity ] ?? 3 ); ?>" data-cat="<?php echo esc_attr( gv_audit_category_label( $r->category ) ); ?>" data-page="<?php echo esc_attr( $r->post_title ?: $r->url ); ?>">
+								<td class="gv-sev-cell" style="border-right-color:<?php echo esc_attr( gv_audit_severity_color( $r->severity ) ); ?>;">
+									<span class="gvaudit-badge" style="background:<?php echo esc_attr( gv_audit_severity_color( $r->severity ) ); ?>;"><?php echo esc_html( gv_audit_severity_label( $r->severity ) ); ?></span>
+								</td>
+								<td><span class="gvaudit-cat-pill"><?php echo esc_html( gv_audit_category_icon( $r->category ) ); ?> <?php echo esc_html( gv_audit_category_label( $r->category ) ); ?></span></td>
+								<td>
+									<a href="<?php echo esc_url( $r->url ); ?>" target="_blank" rel="noopener" class="gvaudit-page-title"><?php echo esc_html( $r->post_title ?: $r->url ); ?></a>
+									<span class="gvaudit-url-small"><?php echo esc_html( $r->url ); ?></span>
+									<?php if ( $r->post_id ) : ?><a href="<?php echo esc_url( get_edit_post_link( $r->post_id ) ); ?>" class="gvaudit-edit-link">ویرایش ✎</a><?php endif; ?>
+								</td>
+								<td>
+									<span class="gvaudit-msg"><?php echo esc_html( $r->message ); ?></span>
+									<?php if ( ! empty( $r->location ) ) : ?><span class="gvaudit-location">📍 محل تقریبی: <?php echo esc_html( $r->location ); ?></span><?php endif; ?>
+									<?php if ( $r->detail ) : ?><span class="gvaudit-detail"><?php echo esc_html( wp_trim_words( $r->detail, 30 ) ); ?></span><?php endif; ?>
+								</td>
+							</tr>
+						<?php endforeach; endif; ?>
+						</tbody>
+					</table>
+				</div>
+			<?php endif; ?>
 
 		<?php elseif ( 'settings' === $tab ) : ?>
 			<?php if ( isset( $_GET['updated'] ) ) : ?><div class="notice notice-success"><p>تنظیمات ذخیره شد.</p></div><?php endif; ?>
@@ -1061,6 +1338,56 @@ function gv_audit_render_admin_page() {
 			stopBtn.style.display = '';
 			tick();
 		<?php endif; ?>
+	})();
+
+	/* ---- باز/بسته‌کردن همه‌ی گروه‌های نمای «گروه‌بندی‌شده» ---- */
+	(function(){
+		var expandBtn   = document.getElementById('gvaudit-expand-all');
+		var collapseBtn = document.getElementById('gvaudit-collapse-all');
+		if (!expandBtn || !collapseBtn) { return; }
+
+		expandBtn.addEventListener('click', function(){
+			document.querySelectorAll('.gvaudit-group').forEach(function(d){ d.open = true; });
+		});
+		collapseBtn.addEventListener('click', function(){
+			document.querySelectorAll('.gvaudit-group').forEach(function(d){ d.open = false; });
+		});
+	})();
+
+	/* ---- سورت کلاینت‌ساید جدول «لیست تخت» (بدون رفرش صفحه) ---- */
+	(function(){
+		var table = document.getElementById('gvaudit-issues-table');
+		if (!table) { return; }
+		var tbody = table.querySelector('tbody');
+
+		table.querySelectorAll('thead th[data-sort]').forEach(function(th){
+			th.addEventListener('click', function(){
+				var key  = th.getAttribute('data-sort');
+				var type = th.getAttribute('data-type') || 'text';
+				var asc  = th.getAttribute('data-dir') !== 'asc';
+
+				table.querySelectorAll('thead th').forEach(function(h){
+					h.removeAttribute('data-dir');
+					var ic = h.querySelector('.gvaudit-sort-ic');
+					if (ic) { ic.textContent = ''; }
+				});
+				th.setAttribute('data-dir', asc ? 'asc' : 'desc');
+				var icEl = th.querySelector('.gvaudit-sort-ic');
+				if (icEl) { icEl.textContent = asc ? '▲' : '▼'; }
+
+				var rows = Array.prototype.slice.call(tbody.querySelectorAll('tr'));
+				rows.sort(function(a, b){
+					var va = a.getAttribute('data-' + key) || '';
+					var vb = b.getAttribute('data-' + key) || '';
+					if ('num' === type) { va = parseFloat(va) || 0; vb = parseFloat(vb) || 0; }
+					else { va = va.toString().toLowerCase(); vb = vb.toString().toLowerCase(); }
+					if (va < vb) { return asc ? -1 : 1; }
+					if (va > vb) { return asc ? 1 : -1; }
+					return 0;
+				});
+				rows.forEach(function(r){ tbody.appendChild(r); });
+			});
+		});
 	})();
 	</script>
 	<?php
