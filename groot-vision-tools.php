@@ -68,6 +68,9 @@ require_once GV_TOOLS_PATH . 'modules/mini_crm.php';
 /* مدیریت فایل‌های چندرسانه‌ای (لیست، وضعیت استفاده، حجم و سورت) */
 require_once GV_TOOLS_PATH . 'modules/media_library_manager.php';
 
+/* واترمارک خودکار تصاویر سایت (حک لوگو روی تصاویر آپلودی، به‌جز لوگوی خود سایت) */
+require_once GV_TOOLS_PATH . 'modules/watermark.php';
+
 /* مشکلات لودینگ سایت */
 require_once GV_TOOLS_PATH . 'modules/page_speed_profiler.php';
 /* آنالیز جامع سئو و سرعت کل سایت */

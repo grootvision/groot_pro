@@ -892,13 +892,13 @@ function gv_at_add_brand_to_adminbar( $wp_admin_bar ) {
 		),
 	) );
 
-	// دسترسی سریع به تم پیشخوان از همان زیرمنو
-	$wp_admin_bar->add_node( array(
-		'id'     => 'gv-pro-hub-theme',
-		'parent' => 'gv-pro-hub',
-		'title'  => '🎨 تم پیشخوان',
-		'href'   => admin_url( 'admin.php?page=' . GV_AT_PAGE_SLUG ),
-	) );
+	// // دسترسی سریع به تم پیشخوان از همان زیرمنو
+	// $wp_admin_bar->add_node( array(
+	// 	'id'     => 'gv-pro-hub-theme',
+	// 	'parent' => 'gv-pro-hub',
+	// 	'title'  => '🎨 تم پیشخوان',
+	// 	'href'   => admin_url( 'admin.php?page=' . GV_AT_PAGE_SLUG ),
+	// ) );
 }
 
 /** استایل ثابت برند در نوار بالا — مستقل از فعال بودن تم اختصاصی */

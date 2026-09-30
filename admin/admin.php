@@ -466,6 +466,15 @@ function gv_hub_get_items() {
 			'category'      => 'seo',
 			'status_option' => null,
 			'status_key'    => null,
+		),array(
+			'title'         => 'واترمارک تصاویر سایت',
+			'desc'          => 'حک خودکار لوگوی شما با شفافیت کم روی گوشه‌ی هر تصویر آپلودی در سایت (محصولات، وبلاگ و ...)، به‌جز لوگوی خود سایت؛ حتی در صورت دانلود فایل، واترمارک روی آن باقی می‌ماند.',
+			'icon'          => '💧',
+			'page'          => GV_WM_PAGE_SLUG,
+			'color'         => '#0369a1',
+			'category'      => 'security',
+			'status_option' => GV_WM_OPT,
+			'status_key'    => 'enabled',
 		),
 		array(
 			'title'         => 'گزارش عملکرد سئوی مشتری',
