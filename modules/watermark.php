@@ -1476,8 +1476,7 @@ function gv_wm_render_tab_library( $s, $sets ) {
 	$qs = array( 'page' => GV_WM_PAGE_SLUG, 'tab' => 'library', 'status' => $f['status'], 'sort' => $f['sort'], 'pp' => $f['pp'] );
 	if ( $f['s'] !== '' ) { $qs['s'] = $f['s']; }
 	if ( $f['cats'] ) { $qs['cats'] = $f['cats']; }
-	$base = str_replace( '999999', '%#%', esc_url( add_query_arg( array_merge( $qs, array( 'gvp' => 999999 ) ), admin_url( 'admin.php' ) ) ) );
-	?>
+$base = str_replace( '999999', '%#%', add_query_arg( array_merge( $qs, array( 'gvp' => 999999 ) ), admin_url( 'admin.php' ) ) );	?>
 	<div class="gvwm-card" style="display:flex;justify-content:space-between;align-items:center;gap:14px;flex-wrap:wrap;">
 		<div>
 			<h2 style="margin:0 0 4px;">📍 دسته‌بندی بر اساس محل استفاده</h2>

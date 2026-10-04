@@ -556,6 +556,17 @@ function gv_hub_get_items() {
 			'status_option' => null,
 			'status_key'    => null,
 		),
+		array(
+			'title'         => 'مدیریت محصولات',
+			'desc'          => 'لیست محصولات ووکامرس، خروجی Excel/CSV با ستون‌های دلخواه، به‌روزرسانی گروهی قیمت و نام و موجودی از روی فایل، و حذف گروهی با بکاپ و بازگردانی.',
+			'icon'          => '🛍️',
+			'page'          => 'gv-product-manager',
+			'color'         => '#4f46e5',
+			'category'      => 'manage',
+			'status_option' => null,
+			'status_key'    => null,
+		),
+
 		
 			array(
 			'title'         => 'مدیریت لودینگ ',
