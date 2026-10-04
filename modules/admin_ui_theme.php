@@ -873,7 +873,7 @@ function gv_at_render_dashboard_widget() {
    ========================================================================== */
 
 // اولویت 25 = بعد از لوگوی وردپرس (10) و نام سایت (20)  →  آیتم سوم
-add_action( 'admin_bar_menu', 'gv_at_add_brand_to_adminbar', 25 );
+add_action( 'admin_bar_menu', 'gv_at_add_brand_to_adminbar', 100 );
 function gv_at_add_brand_to_adminbar( $wp_admin_bar ) {
 	if ( ! defined( 'GV_HUB_SLUG' ) ) { return; }
 	if ( ! current_user_can( 'manage_options' ) ) { return; }
