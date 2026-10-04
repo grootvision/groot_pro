@@ -863,16 +863,29 @@ function gv_at_render_dashboard_widget() {
 }
 
 /* ==========================================================================
-   ۱۰) افزودن برند «گروت پرو» (لوگو + نام) به نوار بالای پیشخوان
-   ------------------------------------------------------------
+   ۱۰) افزودن برند (لوگو + نام) به نوار بالای پیشخوان
+   ------------------------------------------------------------------------
    یک آیتم ثابت در نوار بالای وردپرس اضافه می‌کند تا از هر صفحه‌ای
    با یک کلیک به هاب اصلی افزونه دسترسی سریع وجود داشته باشد.
-   این بخش مستقل از فعال/غیرفعال بودن تم پیشخوان همیشه کار می‌کند.
+   - جایگاه: آیتم سوم (بعد از لوگوی وردپرس و نام سایت)
+   - نام برند از ماژول وایت‌لیبل خوانده می‌شود.
+   - مستقل از فعال/غیرفعال بودن تم پیشخوان همیشه کار می‌کند.
    ========================================================================== */
-add_action( 'admin_bar_menu', 'gv_at_add_brand_to_adminbar', 5 );
+
+// اولویت 25 = بعد از لوگوی وردپرس (10) و نام سایت (20)  →  آیتم سوم
+add_action( 'admin_bar_menu', 'gv_at_add_brand_to_adminbar', 25 );
 function gv_at_add_brand_to_adminbar( $wp_admin_bar ) {
 	if ( ! defined( 'GV_HUB_SLUG' ) ) { return; }
 	if ( ! current_user_can( 'manage_options' ) ) { return; }
+
+	// نام برند از تنظیمات وایت‌لیبل (با مقدار جایگزین در صورت نبودن ماژول)
+	$brand_name = 'Groot Pro';
+	if ( function_exists( 'gv_wl_get_settings' ) ) {
+		$wl = gv_wl_get_settings();
+		if ( ! empty( $wl['brand_name'] ) ) {
+			$brand_name = $wl['brand_name'];
+		}
+	}
 
 	$logo = '<svg width="16" height="16" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">'
 		. '<circle cx="16" cy="16" r="16" fill="currentColor" opacity=".18"/>'
@@ -880,7 +893,8 @@ function gv_at_add_brand_to_adminbar( $wp_admin_bar ) {
 		. '<path d="M11 17.2c0-3.4 2.3-6.1 5.3-6.1 2 0 3.7 1.1 4.6 2.8h-3v1.8h5.4v-5.4h-1.8v2.1c-1.3-1.9-3.3-3.1-5.6-3.1-4.1 0-7.4 3.5-7.4 7.9 0 4.4 3.3 7.9 7.4 7.9 2.9 0 5.5-1.8 6.7-4.5l-1.9-.8c-.9 2-2.7 3.3-4.8 3.3-3 0-5.9-2.7-5.9-6.9Z" fill="currentColor"/>'
 		. '</svg>';
 
-	$title = '<span class="gvat-brand-badge">' . $logo . '</span><span class="gvat-brand-name">Groot Pro</span>';
+	$title = '<span class="gvat-brand-badge">' . $logo . '</span>'
+		. '<span class="gvat-brand-name">' . esc_html( $brand_name ) . '</span>';
 
 	$wp_admin_bar->add_node( array(
 		'id'    => 'gv-pro-hub',
@@ -888,7 +902,7 @@ function gv_at_add_brand_to_adminbar( $wp_admin_bar ) {
 		'href'  => admin_url( 'admin.php?page=' . GV_HUB_SLUG ),
 		'meta'  => array(
 			'class' => 'gvat-brand-node',
-			'title' => 'رفتن به داشبورد گروت پرو',
+			'title' => 'رفتن به داشبورد ' . $brand_name,
 		),
 	) );
 
@@ -903,8 +917,10 @@ function gv_at_add_brand_to_adminbar( $wp_admin_bar ) {
 
 /** استایل ثابت برند در نوار بالا — مستقل از فعال بودن تم اختصاصی */
 add_action( 'admin_head', 'gv_at_brand_adminbar_css' );
+add_action( 'wp_head',    'gv_at_brand_adminbar_css' ); // نمایش درست در سمت سایت (فرانت‌اند) هم
 function gv_at_brand_adminbar_css() {
 	if ( ! defined( 'GV_HUB_SLUG' ) ) { return; }
+	if ( ! is_admin_bar_showing() ) { return; }
 	?>
 	<style id="gv-brand-adminbar-css">
 	#wpadminbar #wp-admin-bar-gv-pro-hub > .ab-item{
