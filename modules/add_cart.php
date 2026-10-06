@@ -218,7 +218,8 @@ function clx_bar_render_admin_page() {
 
 		<div class="clx-admin-header">
 			<h1>📣 کادر تبلیغاتی گوشه صفحه — <?php echo esc_html( CLX_BAR_BRAND ); ?></h1>
-			<span>مخصوص تبلیغ طراحی سایت اقساطی و تماس فوری</span>
+			<span>مخصوص تبلیغات پاپ آپ
+			</span>
 		</div>
 
 		<?php if ( isset( $_GET['updated'] ) ) : ?>
