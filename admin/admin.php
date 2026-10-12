@@ -588,6 +588,16 @@ function gv_hub_get_items() {
 			'status_option' => null,
 			'status_key'    => null,
 		),
+		array(
+	'title'         => 'گزارش کار روزانه کارمندان',
+	'desc'          => 'ثبت سریع کارهای روزانه توسط کارمند، تأیید مدیر، مقایسه‌ی عملکرد، رتبه‌ی کلمات کلیدی و گزارش بدون نام کارمند برای کارفرما از طریق شورت‌کد [groot_work_report].',
+	'icon'          => '📋',
+	'page'          => 'gv-work-report',
+	'color'         => '#0f766e',
+	'category'      => 'seo',
+	'status_option' => null,
+	'status_key'    => null,
+),
 	);
 }
 
@@ -788,6 +798,12 @@ function gv_hub_render_page() {
 						<span class="gv-hub-rail-icon"><svg viewBox="0 0 24 24" width="18" height="18"><path d="M5 19V10M11 19V5M17 19v-7" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round"/></svg></span>
 						<span class="gv-hub-rail-label">گزارش‌ها</span>
 					</a>
+
+					<a href="<?php echo esc_url( admin_url( 'admin.php?page=gv-work-report' ) ); ?>" class="gv-hub-rail-btn" title="گزارش کار روزانه">
+	<span class="gv-hub-rail-icon gv-hub-rail-emoji">📋</span>
+	<span class="gv-hub-rail-label">گزارش کار</span>
+</a>
+
 
 					<a href="<?php echo esc_url( admin_url( 'admin.php?page=' . GV_WL_PAGE_SLUG ) ); ?>" class="gv-hub-rail-btn" title="تنظیمات وایت‌لیبل">
 						<span class="gv-hub-rail-icon gv-hub-rail-emoji">🏷️</span>
