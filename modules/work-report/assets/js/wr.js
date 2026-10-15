@@ -367,7 +367,9 @@
 	};
 	A['emp-title'] = function (b) {
 		var tr = b.closest('tr');
-		post('emp_update', { user: tr.dataset.uid, title: $('.gvwr-title-in', tr).value }).then(function (r) { toast(r.msg); }).catch(function (e) { toast(e.message, true); });
+		var d = { user: tr.dataset.uid, title: $('.gvwr-title-in', tr).value }, rt = $('.gvwr-rate-in', tr);
+		if (rt) { d.rate = rt.value; }
+		post('emp_update', d).then(function (r) { toast(r.msg); }).catch(function (e) { toast(e.message, true); });
 	};
 	A['cat-save'] = function (b) {
 		var tr = b.closest('tr'), c = { id: tr.dataset.id };
@@ -385,13 +387,51 @@
 		post('settings_save', { settings: s }).then(function (r) { toast(r.msg); }).catch(function (e) { toast(e.message, true); }).then(function () { busy(b, false); });
 	};
 	A['make-page'] = function (b) { post('make_page').then(function (r) { toast(r.msg); load(rootOf(b)); }).catch(function (e) { toast(e.message, true); }); };
+	/* پروژه‌ها */
+	function openProj(id) {
+		return post('proj_form', { id: id }).then(function (d) { modal(d.html); }).catch(function (e) { toast(e.message, true); });
+	}
+	A['proj-edit'] = function (b) { openProj(b.dataset.id || 0); };
 	A['proj-save'] = function (b) {
-		var row = b.closest('.gvwr-projrow');
-		post('proj_save', { id: row.dataset.id, name: $('[data-pn]', row).value }).then(function (r) { toast(r.msg); load(rootOf(b)); }).catch(function (e) { toast(e.message, true); });
+		var f = $('#gvwr-projform'), p = { id: f.dataset.id, members: [] };
+		$$('[data-j]', f).forEach(function (e) { p[e.dataset.j] = e.value; });
+		$$('.gvwr-mrow', f).forEach(function (r) {
+			if ($('[data-m="on"]', r).checked) { p.members.push({ user: r.dataset.uid, role: $('[data-m="role"]', r).value }); }
+		});
+		busy(b, true);
+		post('proj_save', { project: p }).then(function (r) { toast(r.msg); closeModal(); reloadAll(); }).catch(function (e) { toast(e.message, true); }).then(function () { busy(b, false); });
 	};
 	A['proj-del'] = function (b) {
 		if (!window.confirm('این پروژه حذف شود؟')) { return; }
-		post('proj_delete', { id: b.closest('.gvwr-projrow').dataset.id }).then(function (r) { toast(r.msg); load(rootOf(b)); }).catch(function (e) { toast(e.message, true); });
+		post('proj_delete', { id: b.dataset.id }).then(function (r) { toast(r.msg); reloadAll(); }).catch(function (e) { toast(e.message, true); });
+	};
+	A['income-add'] = function (b) {
+		var f = $('#gvwr-incform'), d = { project: f.dataset.project };
+		$$('[data-i]', f).forEach(function (e) { d[e.dataset.i] = e.value; });
+		post('income_save', d).then(function (r) { toast(r.msg); reloadAll(); return openProj(f.dataset.project); }).catch(function (e) { toast(e.message, true); });
+	};
+	A['income-del'] = function (b) {
+		if (!window.confirm('این ردیف درآمد حذف شود؟')) { return; }
+		post('income_delete', { id: b.dataset.id }).then(function (r) { toast(r.msg); reloadAll(); return openProj(b.dataset.project); }).catch(function (e) { toast(e.message, true); });
+	};
+
+	/* گزارش‌های دوره‌ای */
+	A['period-view'] = function (b) { post('period_view', { id: b.dataset.id }).then(function (d) { modal(d.html, d.charts); }).catch(function (e) { toast(e.message, true); }); };
+	A['period-toggle'] = function (b) { post('period_toggle', { id: b.dataset.id }).then(function (r) { toast(r.msg); reloadAll(); }).catch(function (e) { toast(e.message, true); }); };
+	A['period-del'] = function (b) {
+		if (!window.confirm('این گزارش دوره‌ای حذف شود؟')) { return; }
+		post('period_delete', { id: b.dataset.id }).then(function (r) { toast(r.msg); reloadAll(); }).catch(function (e) { toast(e.message, true); });
+	};
+
+	/* انتقال و پاک‌سازی داده‌های سیستم قدیمی */
+	A['legacy-run'] = function (b) {
+		busy(b, true);
+		post('legacy_run').then(function (r) { toast(r.msg); reloadAll(); }).catch(function (e) { toast(e.message, true); }).then(function () { busy(b, false); });
+	};
+	A['legacy-drop'] = function (b) {
+		if (!window.confirm('جدول‌های قدیمی برای همیشه پاک می‌شوند و برگشت ندارد. مطمئن هستید همه‌ی داده‌ها درست منتقل شده‌اند؟')) { return; }
+		busy(b, true);
+		post('legacy_drop').then(function (r) { toast(r.msg); reloadAll(); }).catch(function (e) { toast(e.message, true); }).then(function () { busy(b, false); });
 	};
 
 	document.addEventListener('click', function (e) {

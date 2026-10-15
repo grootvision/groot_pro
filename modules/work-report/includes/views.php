@@ -110,7 +110,7 @@ function gvwr_pager( $total, $page, $per ) {
 
 /** نوار فیلتر مشترک */
 function gvwr_filter_bar( $st, $rg, $o = array() ) {
-	$o = wp_parse_args( $o, array( 'users' => false, 'cats' => true, 'status' => false, 'search' => false, 'projects' => true, 'periods' => array( 'day', 'week', 'month', 'year', 'all' ) ) );
+	$o = wp_parse_args( $o, array( 'users' => false, 'cats' => true, 'status' => false, 'search' => false, 'projects' => true, 'project_list' => null, 'periods' => array( 'day', 'week', 'month', 'year', 'all' ) ) );
 	ob_start();
 	?>
 	<div class="gvwr-filters">
@@ -141,9 +141,12 @@ function gvwr_filter_bar( $st, $rg, $o = array() ) {
 		<?php if ( $o['cats'] ) : ?>
 			<select data-f="cat" class="gvwr-sel"><option value="0">همه‌ی دسته‌بندی‌ها</option><?php echo gvwr_cat_options( $st['cat'] ); // phpcs:ignore ?></select>
 		<?php endif; ?>
-		<?php if ( $o['projects'] && count( gvwr_projects() ) > 1 ) : ?>
+		<?php
+		$plist = is_array( $o['project_list'] ) ? $o['project_list'] : gvwr_projects();
+		if ( $o['projects'] && count( $plist ) > 1 ) :
+			?>
 			<select data-f="project" class="gvwr-sel"><option value="0">همه‌ی پروژه‌ها</option>
-				<?php foreach ( gvwr_projects() as $p ) : ?>
+				<?php foreach ( $plist as $p ) : ?>
 					<option value="<?php echo (int) $p->id; ?>" <?php selected( $st['project'], (int) $p->id ); ?>><?php echo esc_html( $p->name ); ?></option>
 				<?php endforeach; ?>
 			</select>
@@ -289,7 +292,7 @@ function gvwr_view_emp_form( $st ) {
 	$tf    = array( 'from' => $today, 'to' => $today, 'user_id' => $uid );
 	$items = gvwr_items( $tf, 50 );
 	$rej   = gvwr_rejected_count( $uid );
-	$projs = gvwr_projects();
+	$projs = gvwr_projects_for_user( get_current_user_id() );
 	ob_start();
 	?>
 	<?php if ( $rej ) : ?>

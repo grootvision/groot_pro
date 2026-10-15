@@ -52,6 +52,14 @@ function gvwr_ajax() {
 		'make_page'     => 'gvwr_op_make_page',
 		'proj_save'     => 'gvwr_op_proj_save',
 		'proj_delete'   => 'gvwr_op_proj_delete',
+		'proj_form'     => 'gvwr_op_proj_form',
+		'income_save'   => 'gvwr_op_income_save',
+		'income_delete' => 'gvwr_op_income_delete',
+		'period_view'   => 'gvwr_op_period_view',
+		'period_toggle' => 'gvwr_op_period_toggle',
+		'period_delete' => 'gvwr_op_period_delete',
+		'legacy_run'    => 'gvwr_op_legacy_run',
+		'legacy_drop'   => 'gvwr_op_legacy_drop',
 	);
 	if ( ! isset( $map[ $op ] ) ) {
 		gvwr_fail( 'درخواست نامعتبر است.' );
@@ -73,6 +81,8 @@ function gvwr_op_view() {
 		'mgr_compare'  => array( 'manage', 'gvwr_view_mgr_compare' ),
 		'people'       => array( 'manage', 'gvwr_view_people' ),
 		'categories'   => array( 'manage', 'gvwr_view_categories' ),
+		'periods'      => array( 'manage', 'gvwr_view_periods' ),
+		'projects'     => array( 'manage', 'gvwr_view_projects' ),
 		'settings'     => array( 'manage', 'gvwr_view_settings' ),
 		'client'       => array( 'client', 'gvwr_view_client' ),
 	);
@@ -311,6 +321,9 @@ function gvwr_op_emp_update() {
 	if ( isset( $_POST['active'] ) ) {
 		$data['active'] = (int) (bool) $_POST['active'];
 	}
+	if ( isset( $_POST['rate'] ) && gvwr_is_super() ) { // نرخ ساعتی فقط توسط مدیر کل وردپرس
+		$data['hourly_rate'] = max( 0, (int) preg_replace( '/\D/', '', strtr( wp_unslash( $_POST['rate'] ), array( '۰' => '0', '۱' => '1', '۲' => '2', '۳' => '3', '۴' => '4', '۵' => '5', '۶' => '6', '۷' => '7', '۸' => '8', '۹' => '9' ) ) ) ); // phpcs:ignore
+	}
 	if ( $data ) {
 		$wpdb->update( gvwr_table( 'employees' ), $data, array( 'user_id' => (int) $_POST['user'] ) ); // phpcs:ignore
 	}
@@ -387,20 +400,18 @@ function gvwr_op_make_page() {
 	wp_send_json_success( array( 'msg' => 'برگه ساخته شد.', 'reload' => true ) );
 }
 
+function gvwr_op_proj_form() {
+	gvwr_need( 'manage' );
+	wp_send_json_success( array( 'html' => gvwr_project_form_html( isset( $_POST['id'] ) ? (int) $_POST['id'] : 0 ) ) );
+}
+
 function gvwr_op_proj_save() {
 	gvwr_need( 'manage' );
-	global $wpdb;
-	$id   = isset( $_POST['id'] ) ? (int) $_POST['id'] : 0;
-	$name = isset( $_POST['name'] ) ? sanitize_text_field( wp_unslash( $_POST['name'] ) ) : ''; // phpcs:ignore
-	if ( '' === $name ) {
-		gvwr_fail( 'نام را بنویسید.' );
+	$id = gvwr_save_project( gvwr_post_json( 'project' ) );
+	if ( is_wp_error( $id ) ) {
+		gvwr_fail( $id->get_error_message() );
 	}
-	if ( $id ) {
-		$wpdb->update( gvwr_table( 'projects' ), array( 'name' => $name ), array( 'id' => $id ) );
-	} else {
-		$wpdb->insert( gvwr_table( 'projects' ), array( 'name' => $name, 'is_default' => 0 ) );
-	}
-	wp_send_json_success( array( 'msg' => 'ذخیره شد.', 'reload' => true ) );
+	wp_send_json_success( array( 'msg' => 'پروژه ذخیره شد.', 'id' => $id ) );
 }
 
 function gvwr_op_proj_delete() {
@@ -409,8 +420,90 @@ function gvwr_op_proj_delete() {
 	$id = isset( $_POST['id'] ) ? (int) $_POST['id'] : 0;
 	$n  = (int) $wpdb->get_var( $wpdb->prepare( 'SELECT COUNT(*) FROM ' . gvwr_table( 'items' ) . ' WHERE project_id=%d', $id ) );
 	if ( $n || $id === gvwr_default_project_id() ) {
-		gvwr_fail( 'این پروژه گزارش دارد یا پروژه‌ی پیش‌فرض است و حذف نمی‌شود.' );
+		gvwr_fail( 'این پروژه گزارش دارد یا پروژه‌ی پیش‌فرض است و حذف نمی‌شود. (می‌توانید وضعیتش را «تکمیل‌شده» یا «لغوشده» کنید.)' );
 	}
 	$wpdb->delete( gvwr_table( 'projects' ), array( 'id' => $id ) );
-	wp_send_json_success( array( 'msg' => 'حذف شد.', 'reload' => true ) );
+	$wpdb->delete( gvwr_table( 'project_members' ), array( 'project_id' => $id ) );
+	$wpdb->delete( gvwr_table( 'project_income' ), array( 'project_id' => $id ) );
+	wp_send_json_success( array( 'msg' => 'حذف شد.' ) );
+}
+
+function gvwr_op_income_save() {
+	gvwr_need( 'manage' );
+	if ( ! gvwr_is_super() ) {
+		gvwr_fail( 'دسترسی ندارید.', 403 );
+	}
+	global $wpdb;
+	$pid    = isset( $_POST['project'] ) ? (int) $_POST['project'] : 0;
+	$amount = isset( $_POST['amount'] ) ? (int) preg_replace( '/\D/', '', (string) $_POST['amount'] ) : 0;
+	$date   = isset( $_POST['date'] ) ? sanitize_text_field( $_POST['date'] ) : '';
+	if ( ! gvwr_project( $pid ) || $amount < 1 || ! gvwr_valid_date( $date ) ) {
+		gvwr_fail( 'مبلغ و تاریخ معتبر وارد کنید.' );
+	}
+	$wpdb->insert( gvwr_table( 'project_income' ), array( 'project_id' => $pid, 'amount' => $amount, 'income_date' => $date, 'note' => mb_substr( isset( $_POST['note'] ) ? sanitize_text_field( wp_unslash( $_POST['note'] ) ) : '', 0, 500 ), 'created_at' => current_time( 'mysql' ) ) ); // phpcs:ignore
+	wp_send_json_success( array( 'msg' => 'درآمد ثبت شد.' ) );
+}
+
+function gvwr_op_income_delete() {
+	gvwr_need( 'manage' );
+	if ( ! gvwr_is_super() ) {
+		gvwr_fail( 'دسترسی ندارید.', 403 );
+	}
+	global $wpdb;
+	$wpdb->delete( gvwr_table( 'project_income' ), array( 'id' => isset( $_POST['id'] ) ? (int) $_POST['id'] : 0 ) );
+	wp_send_json_success( array( 'msg' => 'حذف شد.' ) );
+}
+
+/* --------------------------- گزارش‌های دوره‌ای --------------------------- */
+
+function gvwr_op_period_view() {
+	if ( ! gvwr_can_manage() && ! gvwr_can_client() ) {
+		gvwr_fail( 'دسترسی ندارید.', 403 );
+	}
+	$h = gvwr_period_modal( isset( $_POST['id'] ) ? (int) $_POST['id'] : 0 );
+	if ( null === $h ) {
+		gvwr_fail( 'این گزارش پیدا نشد یا برای شما نیست.', 404 );
+	}
+	wp_send_json_success( array( 'html' => $h ) );
+}
+
+function gvwr_op_period_toggle() {
+	gvwr_need( 'manage' );
+	global $wpdb;
+	$p = gvwr_period( isset( $_POST['id'] ) ? (int) $_POST['id'] : 0 );
+	if ( ! $p ) {
+		gvwr_fail( 'گزارش پیدا نشد.' );
+	}
+	$wpdb->update( gvwr_table( 'periods' ), array( 'status' => 'published' === $p->status ? 'draft' : 'published', 'updated_at' => current_time( 'mysql' ) ), array( 'id' => $p->id ) );
+	wp_send_json_success( array( 'msg' => 'وضعیت گزارش تغییر کرد.' ) );
+}
+
+function gvwr_op_period_delete() {
+	gvwr_need( 'manage' );
+	gvwr_delete_period( isset( $_POST['id'] ) ? (int) $_POST['id'] : 0 );
+	wp_send_json_success( array( 'msg' => 'گزارش حذف شد.' ) );
+}
+
+/* ----------------------------- داده‌های قدیمی ----------------------------- */
+
+function gvwr_op_legacy_run() {
+	if ( ! current_user_can( 'manage_options' ) || ! function_exists( 'gvwr_legacy_import' ) ) {
+		gvwr_fail( 'دسترسی ندارید.', 403 );
+	}
+	$r = gvwr_legacy_import();
+	if ( empty( $r['ok'] ) ) {
+		gvwr_fail( $r['msg'] );
+	}
+	wp_send_json_success( array( 'msg' => 'انتقال انجام شد.', 'reload' => true ) );
+}
+
+function gvwr_op_legacy_drop() {
+	if ( ! current_user_can( 'manage_options' ) || ! function_exists( 'gvwr_legacy_drop' ) ) {
+		gvwr_fail( 'دسترسی ندارید.', 403 );
+	}
+	$r = gvwr_legacy_drop();
+	if ( empty( $r['ok'] ) ) {
+		gvwr_fail( $r['msg'] );
+	}
+	wp_send_json_success( array( 'msg' => 'جدول‌های قدیمی پاک شدند.', 'reload' => true ) );
 }

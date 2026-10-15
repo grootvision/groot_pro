@@ -9,6 +9,9 @@ function gvwr_maybe_upgrade() {
 		return;
 	}
 	gvwr_install();
+	if ( function_exists( 'gvwr_legacy_housekeeping' ) ) {
+		gvwr_legacy_housekeeping();
+	}
 	update_option( 'gvwr_db_version', GVWR_DB_VERSION );
 }
 
@@ -30,6 +33,7 @@ function gvwr_install() {
   end_time time NULL DEFAULT NULL,
   duration_min int(11) NULL DEFAULT NULL,
   screenshots text NULL,
+  period_id bigint(20) unsigned NOT NULL DEFAULT 0,
   status varchar(10) NOT NULL DEFAULT 'pending',
   manager_note text NULL,
   batch varchar(32) NOT NULL DEFAULT '',
@@ -39,6 +43,8 @@ function gvwr_install() {
   KEY user_date (user_id,work_date),
   KEY work_date (work_date),
   KEY category_id (category_id),
+  KEY project_id (project_id),
+  KEY period_id (period_id),
   KEY status (status)
 ) $c;" );
 
@@ -57,6 +63,7 @@ function gvwr_install() {
   id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
   user_id bigint(20) unsigned NOT NULL,
   job_title varchar(120) NOT NULL DEFAULT '',
+  hourly_rate bigint(20) unsigned NOT NULL DEFAULT 0,
   active tinyint(1) NOT NULL DEFAULT 1,
   created_at datetime NOT NULL,
   PRIMARY KEY  (id),
@@ -67,6 +74,17 @@ function gvwr_install() {
   id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
   name varchar(190) NOT NULL,
   is_default tinyint(1) NOT NULL DEFAULT 0,
+  client_name varchar(190) NOT NULL DEFAULT '',
+  client_user_id bigint(20) NOT NULL DEFAULT 0,
+  manager_user_id bigint(20) unsigned NOT NULL DEFAULT 0,
+  status varchar(20) NOT NULL DEFAULT 'active',
+  priority varchar(10) NOT NULL DEFAULT 'normal',
+  health varchar(10) NOT NULL DEFAULT 'green',
+  progress tinyint(3) unsigned NOT NULL DEFAULT 0,
+  start_date date NULL DEFAULT NULL,
+  end_date date NULL DEFAULT NULL,
+  description text NULL,
+  created_at datetime NULL DEFAULT NULL,
   PRIMARY KEY  (id)
 ) $c;" );
 
@@ -90,6 +108,88 @@ function gvwr_install() {
   created_at datetime NOT NULL,
   PRIMARY KEY  (id),
   UNIQUE KEY kw_day (keyword_id,rank_date)
+) $c;" );
+
+	// اعضای پروژه
+	dbDelta( "CREATE TABLE " . gvwr_table( 'project_members' ) . " (
+  id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+  project_id bigint(20) unsigned NOT NULL,
+  user_id bigint(20) unsigned NOT NULL,
+  role_label varchar(120) NOT NULL DEFAULT '',
+  PRIMARY KEY  (id),
+  UNIQUE KEY project_user (project_id,user_id),
+  KEY user_id (user_id)
+) $c;" );
+
+	// درآمد پروژه (فقط برای مدیر کل وردپرس دیده می‌شود)
+	dbDelta( "CREATE TABLE " . gvwr_table( 'project_income' ) . " (
+  id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+  project_id bigint(20) unsigned NOT NULL,
+  amount bigint(20) NOT NULL DEFAULT 0,
+  income_date date NOT NULL,
+  note varchar(500) NOT NULL DEFAULT '',
+  created_at datetime NOT NULL,
+  PRIMARY KEY  (id),
+  KEY project_id (project_id)
+) $c;" );
+
+	// گزارش‌های دوره‌ای (ماهانه) با خلاصه، رشد صفحات و گام بعدی
+	dbDelta( "CREATE TABLE " . gvwr_table( 'periods' ) . " (
+  id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+  project_id bigint(20) unsigned NOT NULL DEFAULT 0,
+  client_user_id bigint(20) unsigned NOT NULL DEFAULT 0,
+  client_name varchar(190) NOT NULL DEFAULT '',
+  title varchar(255) NOT NULL DEFAULT '',
+  period_start date NOT NULL,
+  period_end date NOT NULL,
+  summary longtext NULL,
+  next_steps longtext NULL,
+  hours_spent decimal(8,2) NOT NULL DEFAULT 0,
+  status varchar(12) NOT NULL DEFAULT 'published',
+  visibility text NULL,
+  created_at datetime NOT NULL,
+  updated_at datetime NOT NULL,
+  PRIMARY KEY  (id),
+  KEY project_id (project_id),
+  KEY client_user_id (client_user_id),
+  KEY period_end (period_end)
+) $c;" );
+
+	dbDelta( "CREATE TABLE " . gvwr_table( 'period_keywords' ) . " (
+  id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+  period_id bigint(20) unsigned NOT NULL,
+  keyword varchar(190) NOT NULL,
+  search_engine varchar(50) NOT NULL DEFAULT '',
+  page_url varchar(500) NOT NULL DEFAULT '',
+  prev_rank int(11) NOT NULL DEFAULT 0,
+  curr_rank int(11) NOT NULL DEFAULT 0,
+  note varchar(500) NOT NULL DEFAULT '',
+  sort_order int(11) NOT NULL DEFAULT 0,
+  PRIMARY KEY  (id),
+  KEY period_id (period_id)
+) $c;" );
+
+	dbDelta( "CREATE TABLE " . gvwr_table( 'period_growth' ) . " (
+  id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+  period_id bigint(20) unsigned NOT NULL,
+  page_title varchar(255) NOT NULL DEFAULT '',
+  page_url varchar(500) NOT NULL DEFAULT '',
+  metric_label varchar(120) NOT NULL DEFAULT '',
+  before_value varchar(50) NOT NULL DEFAULT '',
+  after_value varchar(50) NOT NULL DEFAULT '',
+  note varchar(500) NOT NULL DEFAULT '',
+  PRIMARY KEY  (id),
+  KEY period_id (period_id)
+) $c;" );
+
+	// نگاشت رکوردهای قدیمی به جدید (برای اینکه انتقال داده هر چند بار اجرا شود، چیزی تکراری نشود)
+	dbDelta( "CREATE TABLE " . gvwr_table( 'legacy_map' ) . " (
+  id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+  kind varchar(20) NOT NULL,
+  old_key varchar(64) NOT NULL,
+  new_id bigint(20) unsigned NOT NULL DEFAULT 0,
+  PRIMARY KEY  (id),
+  UNIQUE KEY kind_key (kind,old_key)
 ) $c;" );
 
 	gvwr_seed();

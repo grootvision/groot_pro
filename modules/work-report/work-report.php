@@ -14,8 +14,8 @@ if ( defined( 'GVWR_VERSION' ) ) {
 	return; // جلوگیری از لود دوباره
 }
 
-define( 'GVWR_VERSION', '1.0.0' );
-define( 'GVWR_DB_VERSION', '1.0.0' );
+define( 'GVWR_VERSION', '1.1.0' );
+define( 'GVWR_DB_VERSION', '1.1.0' );
 define( 'GVWR_DIR', plugin_dir_path( __FILE__ ) );
 define( 'GVWR_URL', plugin_dir_url( __FILE__ ) );
 define( 'GVWR_MENU_SLUG', 'gv-work-report' );
@@ -30,6 +30,8 @@ $gvwr_files = array(
 	'views',          // ابزارهای مشترک UI + فرم ثبت گزارش + گزارش‌های من
 	'views-manager',  // داشبورد مدیر، همه‌ی گزارش‌ها، مقایسه، تقویم
 	'views-keywords', // کلمات کلیدی و رتبه
+	'views-periods',  // گزارش‌های دوره‌ای (ماهانه)
+	'views-projects', // پروژه‌ها، اعضا، درآمد
 	'views-admin',    // افراد، دسته‌بندی‌ها، تنظیمات
 	'ajax',    // همه‌ی درخواست‌های AJAX
 	'client',  // شورت‌کد و گزارش کارفرما
@@ -37,6 +39,10 @@ $gvwr_files = array(
 );
 foreach ( $gvwr_files as $gvwr_file ) {
 	require_once GVWR_DIR . 'includes/' . $gvwr_file . '.php';
+}
+// انتقال داده‌های بخش قدیمی؛ بعد از پاک‌سازی نهایی می‌توانید این فایل را حذف کنید.
+if ( file_exists( GVWR_DIR . 'includes/legacy.php' ) ) {
+	require_once GVWR_DIR . 'includes/legacy.php';
 }
 unset( $gvwr_files, $gvwr_file );
 

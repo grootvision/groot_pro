@@ -155,12 +155,14 @@ function gvwr_view_mgr_compare( $st ) {
 	}
 	$days_in = max( 1, (int) ( ( strtotime( min( $rg['to'], gvwr_today() ) ) - strtotime( $rg['from'] ) ) / DAY_IN_SECONDS ) + 1 );
 	$best    = key( $s['by_user'] );
+	$super   = gvwr_is_super();
+	$rates   = $super ? gvwr_employee_rates() : array();
 	?>
 	<div class="gvwr-card">
 		<div class="gvwr-cardhead"><h3>جدول مقایسه</h3><span class="gvwr-muted">مرتب‌شده بر اساس تعداد کار</span></div>
 		<div class="gvwr-scroll">
 			<table class="gvwr-table">
-				<thead><tr><th>#</th><th>کارمند</th><th>کل کار</th><th>ردیف گزارش</th><th>روز فعال</th><th>میانگین/روز فعال</th><th>ساعت ثبت‌شده</th><th>تأیید شده</th><th>ردشده</th><?php foreach ( $groups as $g ) : ?><th><?php echo esc_html( $g ); ?></th><?php endforeach; ?></tr></thead>
+				<thead><tr><th>#</th><th>کارمند</th><th>کل کار</th><th>ردیف گزارش</th><th>روز فعال</th><th>میانگین/روز فعال</th><th>ساعت ثبت‌شده</th><?php if ( $super ) : ?><th>نرخ ساعتی</th><th>حقوق تقریبی (تومان)</th><?php endif; ?><th>تأیید شده</th><th>ردشده</th><?php foreach ( $groups as $g ) : ?><th><?php echo esc_html( $g ); ?></th><?php endforeach; ?></tr></thead>
 				<tbody>
 				<?php
 				$i = 0;
@@ -180,6 +182,7 @@ function gvwr_view_mgr_compare( $st ) {
 						<td><?php echo esc_html( gvwr_n( $v['days'] ) ); ?> <span class="gvwr-muted">از <?php echo esc_html( gvwr_fa( $days_in ) ); ?></span></td>
 						<td><?php echo esc_html( gvwr_n( $v['days'] ? $v['qty'] / $v['days'] : 0, 1 ) ); ?></td>
 						<td dir="ltr"><?php echo esc_html( gvwr_minutes( $v['minutes'] ) ); ?></td>
+						<?php if ( $super ) : $rt = isset( $rates[ $uid ] ) ? (int) $rates[ $uid ] : 0; ?><td><?php echo $rt ? esc_html( gvwr_n( $rt ) ) : '—'; ?></td><td><?php echo $rt ? esc_html( gvwr_n( round( $v['minutes'] / 60 * $rt ) ) ) : '—'; ?></td><?php endif; ?>
 						<td><?php echo esc_html( gvwr_fa( $v['items'] ? round( $v['approved'] / $v['items'] * 100 ) : 0 ) ); ?>٪</td>
 						<td><?php echo esc_html( gvwr_n( $v['rejected'] ) ); ?></td>
 						<?php foreach ( $groups as $g ) : ?><td><?php echo esc_html( gvwr_n( $gv[ $g ] ) ); ?></td><?php endforeach; ?>

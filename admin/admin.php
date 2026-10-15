@@ -477,16 +477,6 @@ function gv_hub_get_items() {
 			'status_key'    => 'enabled',
 		),
 		array(
-			'title'         => 'گزارش عملکرد سئوی مشتری',
-			'desc'          => 'ثبت گزارش دوره‌ای کار سئو (تغییر رتبه کلمات، محتوای تولیدشده، رشد صفحات، ساعت کار) و نمایش آن با نمودار در پنل اختصاصی مشتری از طریق شورت‌کد [gv_seo_reports].',
-			'icon'          => '📑',
-			'page'          => GV_SR_PAGE_SLUG,
-			'color'         => '#065f46',
-			'category'      => 'seo',
-			'status_option' => null,
-			'status_key'    => null,
-		),
-		array(
 			'title'         => 'آمار بازدید و رفتار کاربران',
 			'desc'          => 'ثبت بازدید هر صفحه، مدت‌زمان حضور، مسیر حرکت بین صفحات و کلیک‌های کاربران به‌همراه داشبورد آماری.',
 			'icon'          => '📈',
@@ -546,6 +536,16 @@ function gv_hub_get_items() {
 			'status_option' => 'gv_github_updater_settings',
 			'status_key'    => 'enabled',
 		),
+array(
+			'title'         => 'مدیریت سطح دسترسی کاربران',
+			'desc'          => 'ساخت نقش (سطح کاربری)، دادن نقش به کاربران و بستن منو، ویجت، قابلیت، محتوا و آدرس‌ها به‌صورت «قفل» یا «مخفی»؛ پیش‌نمایش به‌جای کاربر، نقش موقت و پنهان‌سازی کاربر ادمین.',
+			'icon'          => '🛡️',
+			'page'          => 'gv-access-manager',
+			'color'         => '#243b6b',
+			'category'      => 'security',
+			'status_option' => null,
+			'status_key'    => null,
+		),
 			array(
 			'title'         => 'مدیریت فایل‌های چندرسانه‌ای',
 			'desc'          => 'لیست تمام عکس‌ها، ویدیوها و فایل‌های سایت، مشخص‌کردن فایل‌های بدون استفاده، محل دقیق استفاده هر فایل و حجم قابل سورت.',
@@ -590,7 +590,7 @@ function gv_hub_get_items() {
 		),
 		array(
 	'title'         => 'گزارش کار روزانه کارمندان',
-	'desc'          => 'ثبت سریع کارهای روزانه توسط کارمند، تأیید مدیر، مقایسه‌ی عملکرد، رتبه‌ی کلمات کلیدی و گزارش بدون نام کارمند برای کارفرما از طریق شورت‌کد [groot_work_report].',
+	'desc'          => 'ثبت سریع کارهای روزانه توسط کارمند، تأیید مدیر، پروژه‌ها و گزارش‌های دوره‌ای ماهانه، مقایسه‌ی عملکرد، رتبه‌ی کلمات کلیدی و گزارش بدون نام کارمند برای کارفرما از طریق شورت‌کد [groot_work_report].',
 	'icon'          => '📋',
 	'page'          => 'gv-work-report',
 	'color'         => '#0f766e',
@@ -632,7 +632,7 @@ function gv_hub_get_item_status( $item ) {
    به‌صورت پیش‌فرض کاربران با نقش‌های gv_employee / administrator /
    editor / author را به‌عنوان «کارمند» نمایش می‌دهیم. تعداد
    گزارش‌ها و تاریخ آخرین گزارش هر کارمند از طریق دو فیلتر زیر
-   قابل تزریق است تا ماژول «گزارش عملکرد سئوی مشتری» (یا هر
+   قابل تزریق است تا ماژول «گزارش کار» (یا هر
    ماژول دیگری) بتواند اطلاعات واقعی خودش را جایگزین کند:
      add_filter( 'gv_hub_employee_reports_count', function( $count, $user_id ) { ... }, 10, 2 );
      add_filter( 'gv_hub_employee_last_report',   function( $date,  $user_id ) { ... }, 10, 2 );
@@ -792,11 +792,6 @@ function gv_hub_render_page() {
 					<a href="<?php echo esc_url( admin_url( 'admin.php?page=' . GV_ST_PAGE_SLUG ) ); ?>" class="gv-hub-rail-btn" title="سیستم تیکت پشتیبانی">
 						<span class="gv-hub-rail-icon"><svg viewBox="0 0 24 24" width="18" height="18"><path d="M4 5.5A1.5 1.5 0 0 1 5.5 4h13A1.5 1.5 0 0 1 20 5.5v9A1.5 1.5 0 0 1 18.5 16H9l-4 3.5v-3.5H5.5A1.5 1.5 0 0 1 4 14.5v-9Z" stroke="currentColor" stroke-width="1.7" fill="none" stroke-linejoin="round"/></svg></span>
 						<span class="gv-hub-rail-label">پیام‌ها</span>
-					</a>
-
-					<a href="<?php echo esc_url( admin_url( 'admin.php?page=' . GV_SR_PAGE_SLUG ) ); ?>" class="gv-hub-rail-btn" title="گزارش عملکرد سئو">
-						<span class="gv-hub-rail-icon"><svg viewBox="0 0 24 24" width="18" height="18"><path d="M5 19V10M11 19V5M17 19v-7" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round"/></svg></span>
-						<span class="gv-hub-rail-label">گزارش‌ها</span>
 					</a>
 
 					<a href="<?php echo esc_url( admin_url( 'admin.php?page=gv-work-report' ) ); ?>" class="gv-hub-rail-btn" title="گزارش کار روزانه">

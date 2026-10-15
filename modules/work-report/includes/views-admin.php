@@ -13,6 +13,8 @@ function gvwr_view_people( $st ) {
 	$users  = get_users( array( 'role__in' => array_keys( $labels ), 'orderby' => 'display_name' ) );
 	$titles = array();
 	$act    = array();
+	$rates  = gvwr_employee_rates();
+	$super  = gvwr_is_super();
 	foreach ( gvwr_employees() as $e ) {
 		$titles[ (int) $e->user_id ] = $e->job_title;
 		$act[ (int) $e->user_id ]    = (int) $e->active;
@@ -25,7 +27,7 @@ function gvwr_view_people( $st ) {
 		<?php if ( $users ) : ?>
 			<div class="gvwr-scroll">
 				<table class="gvwr-table">
-					<thead><tr><th>نام</th><th>نام کاربری</th><th>نقش</th><th>سمت (کارمند)</th><th>وضعیت</th><th></th></tr></thead>
+					<thead><tr><th>نام</th><th>نام کاربری</th><th>نقش</th><th>سمت (کارمند)</th><?php if ( $super ) : ?><th>نرخ ساعتی (تومان)</th><?php endif; ?><th>وضعیت</th><th></th></tr></thead>
 					<tbody>
 					<?php
 					foreach ( $users as $u ) :
@@ -37,6 +39,7 @@ function gvwr_view_people( $st ) {
 							<td dir="ltr"><?php echo esc_html( $u->user_login ); ?></td>
 							<td><span class="gvwr-badge role-<?php echo esc_attr( $role ); ?>"><?php echo esc_html( $labels[ $role ] ); ?></span></td>
 							<td><?php if ( $emp ) : ?><input type="text" class="gvwr-title-in" value="<?php echo esc_attr( isset( $titles[ $u->ID ] ) ? $titles[ $u->ID ] : '' ); ?>" placeholder="مثلاً طراح سایت"><button type="button" class="gvwr-btn ghost sm" data-act="emp-title">ذخیره</button><?php else : ?>—<?php endif; ?></td>
+							<?php if ( $super ) : ?><td><?php if ( $emp ) : ?><input type="text" inputmode="numeric" class="gvwr-rate-in" value="<?php echo esc_attr( isset( $rates[ $u->ID ] ) ? $rates[ $u->ID ] : 0 ); ?>"><?php else : ?>—<?php endif; ?></td><?php endif; ?>
 							<td><?php if ( $emp ) : ?><label class="gvwr-switch"><input type="checkbox" data-act="emp-active" <?php checked( ! isset( $act[ $u->ID ] ) || $act[ $u->ID ] ); ?>><i></i><span>فعال</span></label><?php else : ?>—<?php endif; ?></td>
 							<td><button type="button" class="gvwr-ib no" data-act="person-remove" title="حذف دسترسی گزارش‌کار (یوزر وردپرس حذف نمی‌شود)">🗑</button></td>
 						</tr>
@@ -173,16 +176,12 @@ function gvwr_view_settings( $st ) {
 	</div>
 
 	<div class="gvwr-card">
-		<div class="gvwr-cardhead"><h3>پروژه / سایت</h3><span class="gvwr-muted">پیش‌فرض، نام همین سایت است. فقط اگر یک نصب چند سایت را پوشش می‌دهد پروژه‌ی دیگری اضافه کنید.</span></div>
-		<?php foreach ( gvwr_projects() as $p ) : ?>
-			<div class="gvwr-projrow" data-id="<?php echo (int) $p->id; ?>">
-				<input type="text" data-pn value="<?php echo esc_attr( $p->name ); ?>">
-				<button type="button" class="gvwr-btn ghost sm" data-act="proj-save">ذخیره</button>
-				<?php if ( ! $p->is_default ) : ?><button type="button" class="gvwr-ib no" data-act="proj-del">🗑</button><?php endif; ?>
-			</div>
-		<?php endforeach; ?>
-		<div class="gvwr-projrow" data-id="0"><input type="text" data-pn placeholder="پروژه‌ی جدید…"><button type="button" class="gvwr-btn primary sm" data-act="proj-save">افزودن</button></div>
+		<div class="gvwr-cardhead"><h3>پروژه‌ها</h3></div>
+		<p class="gvwr-muted">مدیریت پروژه‌ها (مشتری، اعضا، وضعیت، درآمد و …) از صفحه‌ی «پروژه‌ها» در منوی گزارش کار انجام می‌شود.</p>
+		<p><a class="gvwr-btn ghost sm" href="<?php echo esc_url( admin_url( 'admin.php?page=gv-wr-projects' ) ); ?>">رفتن به صفحه‌ی پروژه‌ها</a></p>
 	</div>
+
+	<?php echo function_exists( 'gvwr_legacy_card_html' ) ? gvwr_legacy_card_html() : ''; // phpcs:ignore ?>
 	<?php
 	return array( 'html' => ob_get_clean(), 'charts' => array() );
 }

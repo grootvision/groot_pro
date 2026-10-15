@@ -151,7 +151,6 @@
 .gvwr-w-grp { width: 110px; min-width: 0 !important; }
 
 /* کلمات کلیدی */
-.gvwr-kwadd, .gvwr-rankbar, .gvwr-import, .gvwr-projrow, .gvwr-copy { display: flex; gap: 10px; align-items: flex-end; flex-wrap: wrap; }
 .gvwr-kwadd input { flex: 1 1 220px; }
 .gvwr-import { margin-top: 14px; padding-top: 14px; border-top: 1px dashed var(--line); align-items: center; }
 .gvwr-rankbar { justify-content: space-between; margin-bottom: 12px; position: sticky; top: 32px; background: var(--surface); z-index: 5; padding: 6px 0 10px; }
@@ -162,8 +161,6 @@
 .gvwr-rk.same { background: #f1f5f9; color: var(--muted); font-weight: 600; }
 .gvwr-rk.new { background: #e0e7ff; color: #3730a3; font-weight: 600; }
 .gvwr-spark { display: block; }
-.gvwr-projrow { margin-bottom: 8px; align-items: center; }
-.gvwr-projrow input { flex: 1 1 220px; max-width: 360px; }
 .gvwr-copy code { background: #f1f5f9; padding: 6px 12px; border-radius: 8px; font-size: 14px; }
 
 /* فرم‌ها و سوییچ */
@@ -248,3 +245,16 @@
 	.gvwr-wrap { margin: 0; }
 }
 @media (prefers-reduced-motion: reduce) { .gvwr-loading::before { animation: none; } .gvwr-switch i, .gvwr-switch i::after { transition: none; } }
+
+/* پروژه‌ها و گزارش‌های دوره‌ای */
+.gvwr-bar{height:8px;background:#e2e8f0;border-radius:99px;overflow:hidden;min-width:80px}
+.gvwr-bar>i{display:block;height:100%;background:#0f766e;border-radius:99px}
+.gvwr-members{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:8px;margin:8px 0 14px}
+.gvwr-mrow{display:flex;align-items:center;gap:8px;border:1px solid #e2e8f0;border-radius:10px;padding:6px 10px}
+.gvwr-mrow input[type=text]{flex:1;min-width:0}
+.gvwr-psec{margin:16px 0}
+.gvwr-prose{line-height:1.9;white-space:pre-line}
+.gvwr-kpis-sm{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:8px;margin:10px 0}
+.gvwr-h4{font-size:14px;font-weight:700;margin:14px 0 6px}
+.gvwr-block{display:block}
+.gvwr-rate-in{width:110px}

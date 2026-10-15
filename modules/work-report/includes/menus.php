@@ -87,6 +87,8 @@ function gvwr_admin_menu() {
 		add_menu_page( 'گزارش کار', 'گزارش کار' . $badge, 'gvwr_submit', $slug, $page( 'mgr_overview', 'داشبورد گزارش کار', 'نمای کلی عملکرد تیم' ), 'dashicons-chart-area', 58 );
 		add_submenu_page( $slug, 'داشبورد', 'داشبورد', 'gvwr_manage', $slug, $page( 'mgr_overview', 'داشبورد گزارش کار', 'نمای کلی عملکرد تیم' ) );
 		add_submenu_page( $slug, 'همه‌ی گزارش‌ها', 'همه‌ی گزارش‌ها' . $badge, 'gvwr_manage', 'gv-wr-reports', $page( 'mgr_reports', 'همه‌ی گزارش‌ها', 'بررسی، تأیید یا رد گزارش‌ها و خروجی' ) );
+		add_submenu_page( $slug, 'گزارش‌های دوره‌ای', 'گزارش‌های دوره‌ای', 'gvwr_manage', 'gv-wr-periods', $page( 'periods', 'گزارش‌های دوره‌ای', 'گزارش‌های ماهانه‌ی ثبت‌شده، از جمله گزارش‌های قبلی' ) );
+		add_submenu_page( $slug, 'پروژه‌ها', 'پروژه‌ها', 'gvwr_manage', 'gv-wr-projects', $page( 'projects', 'پروژه‌ها', 'کارفرما، اعضا، پیشرفت و سود پروژه‌ها' ) );
 		add_submenu_page( $slug, 'مقایسه‌ی کارمندان', 'مقایسه و تحلیل', 'gvwr_manage', 'gv-wr-compare', $page( 'mgr_compare', 'مقایسه‌ی کارمندان', 'عملکرد کارمندان در کنار هم' ) );
 		add_submenu_page( $slug, 'تقویم', 'تقویم فعالیت', 'gvwr_submit', 'gv-wr-cal', $page( 'calendar', 'تقویم فعالیت' ) );
 		add_submenu_page( $slug, 'کلمات کلیدی', 'کلمات کلیدی و رتبه', 'gvwr_submit', 'gv-wr-kw', $page( 'keywords', 'کلمات کلیدی و رتبه', 'فهرست کلمات سایت و تاریخچه‌ی رتبه‌ها' ) );

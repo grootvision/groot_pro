@@ -3,7 +3,7 @@
 Plugin Name: Groot Vision Tools
 Plugin URI: https://grootvision.com
 Description: مجموعه ابزارهای اختصاصی گروت ویژن
-Version: 8.0.0
+Version: 8.2.0
 Author: Groot Vision
 Author URI: https://grootvision.com
 */
@@ -18,7 +18,7 @@ if ( ! defined('ABSPATH') ) {
 */
 define('GV_TOOLS_PATH', plugin_dir_path(__FILE__));
 define('GV_TOOLS_URL', plugin_dir_url(__FILE__));
-define('GV_TOOLS_VERSION', '8.0.0'); // هر بار نسخه جدید منتشر می‌کنید، این عدد را هم مثل بالای فایل تغییر دهید
+define('GV_TOOLS_VERSION', '8.2.0'); // هر بار نسخه جدید منتشر می‌کنید، این عدد را هم مثل بالای فایل تغییر دهید
 /*
 |--------------------------------------------------
 | لود ماژول‌ها
@@ -51,14 +51,6 @@ require_once GV_TOOLS_PATH . 'modules/image_optimizer.php';
 /* دستیار هوش‌مصنوعی نویسنده توضیحات و سئوی محصول */
 require_once GV_TOOLS_PATH . 'modules/ai_seo_writer.php';
 
-/* گزارش عملکرد سئوی مشتری (پنل اختصاصی مشتری + فرم ثبت گزارش کارمند +
-   تب «کارکرد من» با تایمر زنده + تب «مدیریت تیم» و حقوق) */
-require_once GV_TOOLS_PATH . 'modules/seo_client_reports.php';
- 
-/* همگام‌سازی چندسایتی کارکرد تیم سئو (اختیاری؛ هر سایت خودش تصمیم می‌گیرد
-   Node باشد، Hub باشد، هر دو، یا هیچ‌کدام — از تب «مدیریت تیم» قابل تنظیم است) */
-require_once GV_TOOLS_PATH . 'modules/seo_team_sync.php';
-
 /* ورود و ثبت‌نام با ایمیل یا موبایل + رمز عبور ثابت (بدون کد پیامکی) */
 require_once GV_TOOLS_PATH . 'modules/mobile_login.php';
 
@@ -81,9 +73,11 @@ require_once GV_TOOLS_PATH . 'modules/seo_site_audit.php';
 
 require_once GV_TOOLS_PATH . 'modules/shortcode_boxes.php';
 
-/* گزارش کار روزانه‌ی کارمندان (فرم ثبت سریع، تأیید مدیر، گزارش کارفرما، رتبه کلمات) */
+/* گزارش کار کارمندان، پروژه‌ها، گزارش‌های دوره‌ای و پنل کارفرما (جایگزین کامل بخش قدیمی «گزارش عملکرد سئو») */
 require_once GV_TOOLS_PATH . 'modules/work-report/work-report.php';
 
+/* مدیریت سطح دسترسی کاربران (نقش‌ها، قفل/مخفی‌سازی، پنهان‌سازی کاربر) */
+require_once GV_TOOLS_PATH . 'modules/access-manager/access-manager.php';
 
 /*
 |--------------------------------------------------

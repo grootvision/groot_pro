@@ -8,6 +8,8 @@ if ( ! defined( 'ABSPATH' ) ) {
  * حریم خصوصی: نام کارمند، ساعت شروع/پایان، پیام مدیر و وضعیت داخلی هرگز به این صفحه نمی‌رسد.
  */
 add_shortcode( 'groot_work_report', 'gvwr_shortcode' );
+// سازگاری با برگه‌های قبلی که از شورت‌کد سیستم قدیمی استفاده می‌کردند
+add_shortcode( 'gv_seo_reports', 'gvwr_shortcode' );
 
 function gvwr_shortcode( $atts ) {
 	$a = shortcode_atts( array( 'period' => 'month', 'project' => 0 ), $atts, 'groot_work_report' );
@@ -53,13 +55,25 @@ function gvwr_client_item( $r ) {
 }
 
 function gvwr_view_client( $st ) {
-	$rg = gvwr_range( $st['period'], $st['anchor'] );
-	$f  = array( 'from' => $rg['from'], 'to' => $rg['to'] );
+	$rg      = gvwr_range( $st['period'], $st['anchor'] );
+	$f       = array( 'from' => $rg['from'], 'to' => $rg['to'] );
+	$allowed = gvwr_client_project_ids(); // null = مدیر (بدون محدودیت)
+	if ( null !== $allowed && $st['project'] && ! in_array( (int) $st['project'], $allowed, true ) ) {
+		$st['project'] = 0;
+	}
 	if ( $st['cat'] ) {
 		$f['category_id'] = $st['cat'];
 	}
 	if ( $st['project'] ) {
 		$f['project_id'] = $st['project'];
+	} elseif ( null !== $allowed ) {
+		$f['project_ids'] = $allowed;
+	}
+	$plist = array();
+	foreach ( gvwr_projects() as $pp ) {
+		if ( null === $allowed || in_array( (int) $pp->id, $allowed, true ) ) {
+			$plist[] = $pp;
+		}
 	}
 	if ( gvwr_opt( 'require_approval' ) ) {
 		$f['status'] = 'approved';
@@ -78,7 +92,14 @@ function gvwr_view_client( $st ) {
 	$up      = 0;
 	$down    = 0;
 	if ( gvwr_opt( 'client_show_keywords' ) ) {
-		$kws = gvwr_keywords( $st['project'] ? $st['project'] : gvwr_default_project_id(), true );
+		$kwp = $st['project'];
+		if ( ! $kwp ) {
+			$kwp = gvwr_default_project_id();
+			if ( null !== $allowed && ! in_array( (int) $kwp, $allowed, true ) ) {
+				$kwp = $allowed ? $allowed[0] : 0;
+			}
+		}
+		$kws = $kwp ? gvwr_keywords( $kwp, true ) : array();
 		$ser = gvwr_rank_series( wp_list_pluck( $kws, 'id' ), min( $rg['to'], gvwr_today() ), 6 );
 		foreach ( $kws as $k ) {
 			if ( empty( $ser[ $k->id ] ) ) {
@@ -111,7 +132,7 @@ function gvwr_view_client( $st ) {
 			<button type="button" class="gvwr-btn ghost sm gvwr-noprint" data-act="print">🖨 دریافت PDF</button>
 		</div>
 	</div>
-	<div class="gvwr-noprint"><?php echo gvwr_filter_bar( $st, $rg, array( 'projects' => false ) ); // phpcs:ignore ?></div>
+	<div class="gvwr-noprint"><?php echo gvwr_filter_bar( $st, $rg, array( 'projects' => true, 'project_list' => $plist ) ); // phpcs:ignore ?></div>
 
 	<div class="gvwr-kpis">
 		<?php
@@ -219,6 +240,39 @@ function gvwr_view_client( $st ) {
 			<?php endforeach; ?>
 		</div>
 	<?php endif; ?>
+	<?php
+	// گزارش‌های ماهانه‌ی قبلی (منتقل‌شده از سیستم قبلی یا ثبت‌شده توسط مدیر)
+	if ( function_exists( 'gvwr_periods' ) ) {
+		$pa = array( 'status' => 'published' );
+		if ( null !== $allowed ) {
+			$pa['client_user_id'] = get_current_user_id();
+		} else {
+			$pa['limit'] = 12;
+		}
+		$plist_rows = gvwr_periods( $pa );
+		if ( $plist_rows ) :
+			?>
+			<div class="gvwr-card gvwr-noprint">
+				<div class="gvwr-cardhead"><h3>گزارش‌های ماهانه‌ی قبلی</h3></div>
+				<div class="gvwr-scroll">
+					<table class="gvwr-table">
+						<thead><tr><th>دوره</th><th>پروژه</th><th></th></tr></thead>
+						<tbody>
+						<?php foreach ( $plist_rows as $pr ) : ?>
+							<tr>
+								<td><b><?php echo esc_html( gvwr_period_label( $pr ) ); ?></b></td>
+								<td><?php echo esc_html( $pr->project_name ); ?></td>
+								<td><button type="button" class="gvwr-btn ghost sm" data-act="period-view" data-id="<?php echo (int) $pr->id; ?>">مشاهده</button></td>
+							</tr>
+						<?php endforeach; ?>
+						</tbody>
+					</table>
+				</div>
+			</div>
+			<?php
+		endif;
+	}
+	?>
 	<p class="gvwr-foot gvwr-muted">تاریخ تهیه‌ی گزارش: <?php echo esc_html( gvwr_date( gvwr_today(), 'long' ) ); ?></p>
 	<?php
 	return array( 'html' => ob_get_clean(), 'charts' => $charts );

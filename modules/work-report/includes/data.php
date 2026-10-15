@@ -12,10 +12,92 @@ function gvwr_projects() {
 	return $wpdb->get_results( 'SELECT * FROM ' . gvwr_table( 'projects' ) . ' ORDER BY is_default DESC, id ASC' );
 }
 
+function gvwr_project( $id ) {
+	global $wpdb;
+	return $wpdb->get_row( $wpdb->prepare( 'SELECT * FROM ' . gvwr_table( 'projects' ) . ' WHERE id=%d', (int) $id ) );
+}
+
 function gvwr_default_project_id() {
 	global $wpdb;
 	$id = (int) $wpdb->get_var( 'SELECT id FROM ' . gvwr_table( 'projects' ) . ' ORDER BY is_default DESC, id ASC LIMIT 1' );
 	return $id ? $id : 1;
+}
+
+function gvwr_project_statuses() {
+	return array(
+		'planning'  => array( 'label' => 'برنامه‌ریزی', 'color' => '#64748b' ),
+		'active'    => array( 'label' => 'در حال اجرا', 'color' => '#2563eb' ),
+		'on_hold'   => array( 'label' => 'متوقف‌شده', 'color' => '#b45309' ),
+		'completed' => array( 'label' => 'تکمیل‌شده', 'color' => '#16a34a' ),
+		'cancelled' => array( 'label' => 'لغوشده', 'color' => '#dc2626' ),
+	);
+}
+
+function gvwr_project_priorities() {
+	return array(
+		'low'    => array( 'label' => 'کم', 'color' => '#64748b' ),
+		'normal' => array( 'label' => 'عادی', 'color' => '#2563eb' ),
+		'high'   => array( 'label' => 'بالا', 'color' => '#b45309' ),
+		'urgent' => array( 'label' => 'فوری', 'color' => '#dc2626' ),
+	);
+}
+
+function gvwr_project_healths() {
+	return array(
+		'green'  => array( 'label' => 'سالم', 'color' => '#16a34a', 'icon' => '🟢' ),
+		'yellow' => array( 'label' => 'نیازمند توجه', 'color' => '#b45309', 'icon' => '🟡' ),
+		'red'    => array( 'label' => 'در خطر', 'color' => '#dc2626', 'icon' => '🔴' ),
+	);
+}
+
+/** اعضای پروژه: [user_id => role_label] */
+function gvwr_project_members( $project_id ) {
+	global $wpdb;
+	$out = array();
+	foreach ( (array) $wpdb->get_results( $wpdb->prepare( 'SELECT user_id, role_label FROM ' . gvwr_table( 'project_members' ) . ' WHERE project_id=%d', (int) $project_id ) ) as $r ) {
+		$out[ (int) $r->user_id ] = $r->role_label;
+	}
+	return $out;
+}
+
+/**
+ * پروژه‌هایی که کارفرما اجازه‌ی دیدنشان را دارد.
+ * null = بدون محدودیت (مدیر). client_user_id: 0 = همه‌ی کارفرمایان، عدد مثبت = فقط همان کاربر، منفی = داخلی (هیچ کارفرمایی).
+ */
+function gvwr_client_project_ids( $uid = 0 ) {
+	if ( gvwr_can_manage() ) {
+		return null;
+	}
+	global $wpdb;
+	$uid = $uid ? (int) $uid : get_current_user_id();
+	return array_map( 'intval', (array) $wpdb->get_col( $wpdb->prepare( 'SELECT id FROM ' . gvwr_table( 'projects' ) . ' WHERE client_user_id IN (0,%d) ORDER BY is_default DESC, id ASC', $uid ) ) );
+}
+
+/** نرخ ساعتی کارمندان: [user_id => تومان] */
+function gvwr_employee_rates() {
+	global $wpdb;
+	$out = array();
+	foreach ( (array) $wpdb->get_results( 'SELECT user_id, hourly_rate FROM ' . gvwr_table( 'employees' ) ) as $r ) {
+		$out[ (int) $r->user_id ] = (int) $r->hourly_rate;
+	}
+	return $out;
+}
+
+/** هزینه‌ی نیروی انسانی یک پروژه بر اساس ساعت‌های ثبت‌شده × نرخ ساعتی */
+function gvwr_project_labor( $project_id ) {
+	global $wpdb;
+	$r = $wpdb->get_row(
+		$wpdb->prepare(
+			'SELECT COALESCE(SUM(i.duration_min),0) minutes, COALESCE(SUM(i.duration_min * COALESCE(e.hourly_rate,0)),0) cost FROM ' . gvwr_table( 'items' ) . ' i LEFT JOIN ' . gvwr_table( 'employees' ) . ' e ON e.user_id=i.user_id WHERE i.project_id=%d',
+			(int) $project_id
+		)
+	);
+	return array( 'minutes' => $r ? (int) $r->minutes : 0, 'cost' => $r ? (int) round( $r->cost / 60 ) : 0 );
+}
+
+function gvwr_project_income_total( $project_id ) {
+	global $wpdb;
+	return (int) $wpdb->get_var( $wpdb->prepare( 'SELECT COALESCE(SUM(amount),0) FROM ' . gvwr_table( 'project_income' ) . ' WHERE project_id=%d', (int) $project_id ) );
 }
 
 function gvwr_categories( $active_only = true ) {
@@ -67,6 +149,10 @@ function gvwr_where( $f ) {
 			$w[] = "i.$k=%d";
 			$a[] = (int) $f[ $k ];
 		}
+	}
+	if ( isset( $f['project_ids'] ) ) { // فهرست مجاز پروژه‌ها (برای کارفرما)؛ خالی = هیچ‌چیز
+		$ids = array_values( array_filter( array_map( 'intval', (array) $f['project_ids'] ) ) );
+		$w[] = $ids ? 'i.project_id IN (' . implode( ',', $ids ) . ')' : '1=0';
 	}
 	if ( ! empty( $f['status'] ) ) {
 		$st = array_values( array_intersect( (array) $f['status'], array( 'pending', 'approved', 'rejected' ) ) );
@@ -190,7 +276,7 @@ function gvwr_clean_item( $d, $uid ) {
 	}
 	return array(
 		'category_id'  => $cat,
-		'project_id'   => ! empty( $d['project'] ) ? (int) $d['project'] : gvwr_default_project_id(),
+		'project_id'   => gvwr_resolve_project( isset( $d['project'] ) ? (int) $d['project'] : 0, $uid ),
 		'work_date'    => $date,
 		'description'  => mb_substr( $desc, 0, 3000 ),
 		'url'          => esc_url_raw( isset( $d['url'] ) ? $d['url'] : '' ),
@@ -202,18 +288,55 @@ function gvwr_clean_item( $d, $uid ) {
 	);
 }
 
+/** پروژه‌ی معتبر برای ثبت گزارش؛ اگر نامعتبر یا غیرمجاز بود، پروژه‌ی پیش‌فرض */
+function gvwr_resolve_project( $pid, $uid ) {
+	if ( $pid ) {
+		foreach ( gvwr_projects_for_user( $uid ) as $p ) {
+			if ( (int) $p->id === (int) $pid ) {
+				return (int) $pid;
+			}
+		}
+	}
+	return gvwr_default_project_id();
+}
+
+/**
+ * پروژه‌هایی که یک کاربر در فرم ثبت گزارش می‌بیند.
+ * مدیر: همه. کارمند: پروژه‌های در حال اجرا/برنامه‌ریزی که یا عضوشان است یا اصلاً عضوی ندارند.
+ */
+function gvwr_projects_for_user( $uid ) {
+	$u = get_userdata( (int) $uid );
+	if ( $u && ( $u->has_cap( 'gvwr_manage' ) || $u->has_cap( 'manage_options' ) ) ) {
+		return gvwr_projects();
+	}
+	global $wpdb;
+	$P = gvwr_table( 'projects' );
+	$M = gvwr_table( 'project_members' );
+	return $wpdb->get_results(
+		$wpdb->prepare(
+			"SELECT p.* FROM $P p WHERE p.status IN ('planning','active') AND ( p.is_default=1 OR NOT EXISTS (SELECT 1 FROM $M m WHERE m.project_id=p.id) OR EXISTS (SELECT 1 FROM $M m2 WHERE m2.project_id=p.id AND m2.user_id=%d) ) ORDER BY p.is_default DESC, p.id ASC",
+			(int) $uid
+		)
+	);
+}
+
 function gvwr_insert_items( $rows, $date, $project, $uid ) {
 	global $wpdb;
-	$batch = wp_generate_password( 12, false );
-	$now   = current_time( 'mysql' );
-	$ok    = 0;
-	foreach ( $rows as $r ) {
+	// اول همه‌ی ردیف‌ها بررسی می‌شوند؛ اگر حتی یکی ایراد داشت هیچ‌کدام ذخیره نمی‌شود (وگرنه با ثبت دوباره، ردیف‌های سالم تکراری می‌شدند).
+	$clean = array();
+	foreach ( $rows as $i => $r ) {
 		$r['date']    = $date;
 		$r['project'] = $project;
 		$c            = gvwr_clean_item( $r, $uid );
 		if ( is_wp_error( $c ) ) {
-			return $c;
+			return new WP_Error( $c->get_error_code(), 'ردیف ' . gvwr_fa( $i + 1 ) . ': ' . $c->get_error_message() );
 		}
+		$clean[] = $c;
+	}
+	$batch = wp_generate_password( 12, false );
+	$now   = current_time( 'mysql' );
+	$ok    = 0;
+	foreach ( $clean as $c ) {
 		$c['user_id']    = (int) $uid;
 		$c['status']     = gvwr_opt( 'auto_approve' ) ? 'approved' : 'pending';
 		$c['batch']      = $batch;
@@ -248,6 +371,9 @@ function gvwr_update_item( $id, $d, $actor ) {
 		return $c;
 	}
 	$c['updated_at'] = current_time( 'mysql' );
+	if ( ! isset( $d['project'] ) ) { // فرم ویرایش فیلد پروژه ندارد؛ پروژه‌ی قبلی حفظ شود
+		$c['project_id'] = (int) $it->project_id;
+	}
 	if ( ! $mgr ) { // ویرایش کارمند، دوباره به صف تأیید می‌رود
 		$c['status']       = gvwr_opt( 'auto_approve' ) ? 'approved' : 'pending';
 		$c['manager_note'] = '';
